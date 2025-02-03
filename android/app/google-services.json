@@ -12,7 +12,12 @@
           "package_name": "com.reelai.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "403328203757-0ha0if5qei80us7l4m5hl5vlu3av5eta.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAFRKPYtZCCtMhX_XIWrDaCF4b-WXbQX6U"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "403328203757-0ha0if5qei80us7l4m5hl5vlu3av5eta.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
