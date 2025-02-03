@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "403328203757",
+    "project_id": "reel-ai-8132d",
+    "storage_bucket": "reel-ai-8132d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:403328203757:android:0ff759a3d8f4138d7a85e4",
+        "android_client_info": {
+          "package_name": "com.reelai.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFRKPYtZCCtMhX_XIWrDaCF4b-WXbQX6U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
