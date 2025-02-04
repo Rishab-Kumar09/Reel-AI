@@ -376,255 +376,59 @@ class SampleDataService {
   }
 
   Future<void> uploadVideoFromDevice() async {
-    Timer? statusTimer;
     try {
-      print('Starting video upload process...');
-      
-      // Test Firebase Storage access
-      try {
-        print('\nTesting Firebase Storage access...');
-        final testRef = _storage.ref().child('test/permission_check.txt');
-        final testBytes = Uint8List.fromList('test'.codeUnits);
-        await testRef.putData(testBytes);
-        await testRef.delete();
-        print('Firebase Storage access test: SUCCESS');
-      } catch (e) {
-        print('Firebase Storage access test: FAILED');
-        print('Error: $e');
-        if (e is FirebaseException) {
-          print('Firebase Error Code: ${e.code}');
-          print('Firebase Error Message: ${e.message}');
-        }
-        throw 'Failed to access Firebase Storage. Please check your Firebase configuration and permissions.';
-      }
-      
-      // Pick video file with explicit web mode settings
-      print('Opening file picker with web mode settings...');
+      // Pick video file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
-        allowMultiple: false,
-        withData: true,
-        withReadStream: false,
         allowCompression: true,
       );
 
-      if (result != null && result.files.isNotEmpty) {
-        final PlatformFile file = result.files.first;
-        
-        // Debug file information
-        print('\nFile Debug Information:');
-        print('- Name: ${file.name}');
-        print('- Size: ${(file.size / (1024 * 1024)).toStringAsFixed(2)} MB');
-        print('- Has bytes: ${file.bytes != null}');
-        print('- Bytes length: ${file.bytes?.length ?? 0}');
-        
-        // Validate file size (max 100MB)
-        if (file.size > 100 * 1024 * 1024) {
-          throw 'Video file is too large. Maximum size is 100MB.';
-        }
-
-        // Validate we have the bytes
-        if (file.bytes == null || file.bytes!.isEmpty) {
-          print('Error: File bytes are null or empty');
-          throw 'Failed to read file data. Please try selecting the file again.';
-        }
-
-        // Generate unique filename with timestamp
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final String fileName = '${timestamp}_${file.name.replaceAll(' ', '_')}';
-        print('\nProcessing upload:');
-        print('- Generated filename: $fileName');
-        print('- Timestamp: $timestamp');
-
-        try {
-          // Create storage reference with proper path encoding
-          final String safePath = Uri.encodeComponent('videos/$fileName');
-          final storageRef = _storage.ref().child(safePath);
-          print('- Created storage reference: $safePath');
-
-          // Create upload task
-          print('\nInitializing upload task...');
-          final UploadTask task = storageRef.putData(
-            file.bytes!,
-            SettableMetadata(
-              contentType: 'video/mp4',
-              customMetadata: {
-                'originalName': file.name,
-                'size': file.size.toString(),
-                'timestamp': timestamp.toString(),
-                'uploadTimestamp': DateTime.now().toIso8601String(),
-              },
-            ),
-          );
-          print('- Upload task created');
-
-          bool uploadComplete = false;
-          int elapsedSeconds = 0;
-          int lastBytesTransferred = 0;
-
-          // Start periodic status updates
-          statusTimer = Timer.periodic(Duration(seconds: 5), (timer) {
-            if (uploadComplete) {
-              timer.cancel();
-              return;
-            }
-            elapsedSeconds += 5;
-            final currentBytes = task.snapshot.bytesTransferred;
-            final totalBytes = task.snapshot.totalBytes;
-            final progress = (currentBytes / totalBytes) * 100;
-            final speed = currentBytes > lastBytesTransferred 
-                ? ((currentBytes - lastBytesTransferred) / 5 / 1024).toStringAsFixed(2) 
-                : '0';
-            
-            print('\nPeriodic Status Update (${elapsedSeconds}s elapsed):');
-            print('- Progress: ${progress.toStringAsFixed(2)}%');
-            print('- Uploaded: ${(currentBytes / (1024 * 1024)).toStringAsFixed(2)} MB');
-            print('- Total Size: ${(totalBytes / (1024 * 1024)).toStringAsFixed(2)} MB');
-            print('- Upload Speed: $speed KB/s');
-            print('- Upload task state: ${task.snapshot.state}');
-            
-            if (progress > 0) {
-              final estimatedSecondsLeft = progress < 100 
-                  ? ((totalBytes - currentBytes) / (currentBytes / elapsedSeconds)).toInt()
-                  : 0;
-              print('- Estimated time remaining: ${estimatedSecondsLeft}s');
-            }
-            
-            // Check if upload is stalled
-            if (currentBytes > 0 && currentBytes == lastBytesTransferred) {
-              print('⚠️ Warning: Upload appears to be stalled');
-              print('- No progress in the last 5 seconds');
-              print('- If this persists, check network connection');
-            } else if (currentBytes == 0 && elapsedSeconds > 15) {
-              print('⚠️ Warning: Upload hasn\'t started after ${elapsedSeconds}s');
-              print('- This might indicate a connection issue');
-              print('- Or a problem with Firebase Storage permissions');
-            }
-            
-            lastBytesTransferred = currentBytes;
-          });
-
-          // Monitor upload progress with enhanced error handling
-          task.snapshotEvents.listen(
-            (TaskSnapshot snapshot) {
-              if (uploadComplete) return;
-              
-              final progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-              final uploadedMB = (snapshot.bytesTransferred / (1024 * 1024)).toStringAsFixed(2);
-              final totalMB = (snapshot.totalBytes / (1024 * 1024)).toStringAsFixed(2);
-              final currentSpeed = snapshot.bytesTransferred > lastBytesTransferred 
-                  ? ((snapshot.bytesTransferred - lastBytesTransferred) / 5 / 1024).toStringAsFixed(2) 
-                  : "0";
-              
-              print('\nUpload Progress Update:');
-              print('- Progress: ${progress.toStringAsFixed(2)}%');
-              print('- Transferred: $uploadedMB MB / $totalMB MB');
-              print('- Current Speed: $currentSpeed KB/s');
-              print('- State: ${snapshot.state}');
-              
-              if (progress > 0) {
-                final estimatedSecondsLeft = progress < 100 
-                    ? ((snapshot.totalBytes - snapshot.bytesTransferred) / (snapshot.bytesTransferred / elapsedSeconds)).toInt()
-                    : 0;
-                print('- Estimated time remaining: ${estimatedSecondsLeft}s');
-              }
-              
-              if (snapshot.state == TaskState.error) {
-                print('❌ Error state detected in snapshot');
-                uploadComplete = true;
-                statusTimer?.cancel();
-                throw 'Upload entered error state';
-              }
-            },
-            onError: (error) {
-              statusTimer?.cancel();
-              print('\n❌ Upload Stream Error:');
-              print('- Error Type: ${error.runtimeType}');
-              if (error is FirebaseException) {
-                print('- Firebase Error Code: ${error.code}');
-                print('- Firebase Error Message: ${error.message}');
-                print('- Firebase Stack Trace: ${error.stackTrace}');
-              }
-              throw error;
-            },
-            cancelOnError: true,
-          );
-
-          try {
-            print('\nWaiting for upload completion...');
-            final TaskSnapshot snapshot = await task;
-            
-            print('\nUpload Completion Status:');
-            print('- Final state: ${snapshot.state}');
-            print('- Total bytes transferred: ${snapshot.bytesTransferred}');
-            print('- Reference path: ${snapshot.ref.fullPath}');
-            
-            final String downloadUrl = await snapshot.ref.getDownloadURL();
-            print('- Download URL obtained: $downloadUrl');
-
-            // Add to Firestore
-            print('\nAdding video metadata to Firestore...');
-            await _addVideo(
-              userId: 'user_uploaded',
-              username: '@user',
-              videoUrl: downloadUrl,
-              thumbnailUrl: 'https://picsum.photos/seed/${fileName}/300/500',
-              description: 'User uploaded video 📱 #upload',
-              category: 'user_content',
-              isVertical: true,
-              topics: ['User Content'],
-              skills: ['Content Creation'],
-              difficultyLevel: 'beginner',
-              aiMetadata: {
-                'content_tags': ['User Content', 'Original'],
-                'uploadInfo': {
-                  'originalSize': file.size,
-                  'uploadTime': DateTime.now().toIso8601String(),
-                  'fileName': fileName,
-                },
-                'key_moments': {
-                  'start': [0, 30],
-                  'middle': [31, 60],
-                  'end': [61, 90],
-                },
-              },
-            );
-            print('Video metadata added to Firestore successfully');
-            print('\nUpload process completed successfully!');
-            
-          } catch (timeoutError) {
-            print('\nError during upload:');
-            print('- Error Type: ${timeoutError.runtimeType}');
-            print('- Error Message: $timeoutError');
-            
-            try {
-              print('Attempting to clean up failed upload...');
-              await storageRef.delete();
-              print('Cleaned up incomplete upload successfully');
-            } catch (cleanupError) {
-              print('Failed to clean up incomplete upload: $cleanupError');
-            }
-            
-            throw timeoutError;
-          }
-        } catch (uploadError) {
-          print('\nUpload process error:');
-          print('- Error Type: ${uploadError.runtimeType}');
-          if (uploadError is FirebaseException) {
-            print('- Firebase Error Code: ${uploadError.code}');
-            print('- Firebase Error Message: ${uploadError.message}');
-          }
-          print('- Full Error: $uploadError');
-          throw 'Upload failed: ${uploadError is FirebaseException ? uploadError.message : uploadError}';
-        }
-      } else {
-        print('No video selected or file picker was cancelled');
-        throw 'No video was selected';
+      if (result == null || result.files.isEmpty) {
+        throw 'No video selected';
       }
+
+      PlatformFile file = result.files.first;
+      if (file.bytes == null) {
+        throw 'No video data available';
+      }
+
+      // Generate a unique filename
+      String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      
+      print('Uploading video to Firebase Storage: $fileName');
+      final storageRef = _storage.ref().child('videos/$fileName');
+      
+      // Upload video bytes to Firebase Storage
+      await storageRef.putData(
+        file.bytes!,
+        SettableMetadata(contentType: 'video/mp4'),
+      );
+
+      // Get the download URL
+      final downloadUrl = await storageRef.getDownloadURL();
+      print('Video uploaded successfully. Download URL: $downloadUrl');
+
+      // Add video metadata to Firestore
+      await _addVideo(
+        userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
+        username: '@user_${DateTime.now().millisecondsSinceEpoch}',
+        videoUrl: downloadUrl,
+        thumbnailUrl: 'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
+        description: 'New video upload',
+        category: 'general',
+        isVertical: true,
+        topics: ['General'],
+        skills: ['Content Creation'],
+        difficultyLevel: 'beginner',
+        aiMetadata: {
+          'content_tags': ['User Upload'],
+          'key_moments': {
+            'full': [0, 100],
+          },
+        },
+      );
     } catch (e) {
-      print('\nFinal error in uploadVideoFromDevice:');
-      print('- Error Type: ${e.runtimeType}');
-      print('- Error Message: $e');
+      print('Error uploading video: $e');
       rethrow;
     }
   }

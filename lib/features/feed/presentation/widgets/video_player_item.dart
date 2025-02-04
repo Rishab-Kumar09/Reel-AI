@@ -162,21 +162,14 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
 
         // Volume control button (bottom right)
         Positioned(
-          right: 16,
-          bottom: 160, // Position above the action buttons
-          child: GestureDetector(
-            onTap: _toggleMute,
-            child: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: Icon(
-                _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                color: Colors.white,
-                size: 28,
-              ),
+          right: 8,
+          bottom: 220,
+          child: IconButton(
+            onPressed: _toggleMute,
+            icon: Icon(
+              _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+              color: Colors.white,
+              size: 32,
             ),
           ),
         ),
