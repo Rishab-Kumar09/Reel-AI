@@ -12,21 +12,86 @@ class AuthService {
     scopes: ['email', 'profile'],
   );
 
+  // Test user credentials
+  static const String testEmail = 'test@reelai.com';
+  static const String testPassword = 'test123';
+
   // Get current user
   User? get currentUser => _auth.currentUser;
 
   // Stream of auth changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  // Check if test user exists
+  Future<bool> checkTestUserExists() async {
+    try {
+      // Try to fetch all sign-in methods for the test email
+      final methods = await _auth.fetchSignInMethodsForEmail(testEmail);
+      print('Available sign-in methods for test user: $methods');
+      return methods.isNotEmpty;
+    } catch (e) {
+      print('Error checking test user: $e');
+      return false;
+    }
+  }
+
+  // Create test user account
+  Future<UserCredential> createTestUser() async {
+    try {
+      // First check if the user exists
+      final exists = await checkTestUserExists();
+      print('Test user exists: $exists');
+
+      if (!exists) {
+        print('Creating new test user...');
+        // Create new test user
+        final credential = await _auth.createUserWithEmailAndPassword(
+          email: testEmail,
+          password: testPassword,
+        );
+
+        print('Test user created, creating Firestore document...');
+        // Create test user document in Firestore
+        await _firestore.collection('users').doc(credential.user!.uid).set({
+          'id': credential.user!.uid,
+          'email': testEmail,
+          'name': 'Test User',
+          'photoUrl': 'https://picsum.photos/200',
+          'bio': 'I am a test user exploring ReelAI!',
+          'savedVideos': [],
+          'progress': {},
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        print('Test user document created');
+        return credential;
+      } else {
+        print('Attempting to sign in existing test user...');
+        // User exists, try to sign in
+        return await signInWithEmail(testEmail, testPassword);
+      }
+    } catch (e) {
+      print('Error in createTestUser: $e');
+      if (e is FirebaseAuthException) {
+        throw e.message ?? 'An error occurred during test user creation/login';
+      }
+      throw e.toString();
+    }
+  }
+
   // Sign in with email and password
   Future<UserCredential> signInWithEmail(String email, String password) async {
     try {
+      print('Attempting to sign in with email: $email');
       final credential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
+      print('Sign in successful');
       return credential;
     } catch (e) {
+      print('Error signing in with email: $e');
       rethrow;
     }
   }

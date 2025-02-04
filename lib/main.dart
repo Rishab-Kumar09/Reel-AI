@@ -28,9 +28,10 @@ class MyApp extends StatelessWidget {
     return GetMaterialApp(
       title: 'Reel AI',
       theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.dark,
       initialRoute: AppPages.initial,
       getPages: AppPages.routes,
-      defaultTransition: Transition.fadeIn,
       debugShowCheckedModeBanner: false,
     );
   }

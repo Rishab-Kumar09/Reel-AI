@@ -54,13 +54,13 @@ class _LoginViewState extends State<LoginView> {
               children: [
                 const SizedBox(height: 48),
                 Text(
-                  'Welcome Back!',
+                  'Welcome to ReelAI!',
                   style: AppTheme.headlineLarge,
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Sign in to continue learning',
+                  'Sign in to start exploring',
                   style: AppTheme.bodyLarge.copyWith(
                     color: AppTheme.textSecondaryColor,
                   ),
@@ -95,9 +95,6 @@ class _LoginViewState extends State<LoginView> {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your password';
                     }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
                     return null;
                   },
                   suffix: IconButton(
@@ -110,22 +107,7 @@ class _LoginViewState extends State<LoginView> {
                     onPressed: _togglePasswordVisibility,
                   ),
                 ),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {
-                      // TODO: Implement forgot password
-                    },
-                    child: Text(
-                      'Forgot Password?',
-                      style: AppTheme.bodyMedium.copyWith(
-                        color: AppTheme.primaryColor,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 Obx(() => ElevatedButton(
                       onPressed:
                           _authController.isLoading.value ? null : _handleLogin,
@@ -137,47 +119,19 @@ class _LoginViewState extends State<LoginView> {
                             )
                           : const Text('Sign In'),
                     )),
-                const SizedBox(height: 24),
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        'OR',
-                        style: AppTheme.bodyMedium.copyWith(
-                          color: AppTheme.textSecondaryColor,
-                        ),
-                      ),
-                    ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 OutlinedButton(
                   onPressed: () => _authController.signInWithGoogle(),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    side: BorderSide(color: AppTheme.textSecondaryColor.withOpacity(0.2)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Image.asset(
-                        'assets/images/google_logo.png',
-                        width: 24,
-                        height: 24,
+                      Icon(
+                        Icons.g_mobiledata_rounded,
+                        size: 24,
+                        color: Theme.of(context).colorScheme.primary,
                       ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Continue with Google',
-                        style: AppTheme.bodyLarge.copyWith(
-                          color: AppTheme.textPrimaryColor,
-                        ),
-                      ),
+                      const SizedBox(width: 8),
+                      const Text('Sign in with Google'),
                     ],
                   ),
                 ),
@@ -187,17 +141,13 @@ class _LoginViewState extends State<LoginView> {
                   children: [
                     Text(
                       'Don\'t have an account? ',
-                      style: AppTheme.bodyMedium,
+                      style: AppTheme.bodyMedium.copyWith(
+                        color: AppTheme.textSecondaryColor,
+                      ),
                     ),
                     TextButton(
-                      onPressed: () => Get.toNamed(Routes.signup),
-                      child: Text(
-                        'Sign Up',
-                        style: AppTheme.bodyMedium.copyWith(
-                          color: AppTheme.primaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      onPressed: () => Get.toNamed('/signup'),
+                      child: const Text('Sign Up'),
                     ),
                   ],
                 ),

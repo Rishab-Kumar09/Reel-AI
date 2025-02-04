@@ -58,10 +58,44 @@ class AuthController extends GetxController {
     }
   }
 
+  Future<void> signInWithTestUser() async {
+    try {
+      isLoading.value = true;
+      await _authService.createTestUser();
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        e.toString(),
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
+        colorText: AppTheme.errorColor,
+        duration: const Duration(seconds: 3),
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   Future<void> signInWithEmail(String email, String password) async {
     try {
       isLoading.value = true;
-      await _authService.signInWithEmail(email, password);
+      
+      // Check if this is the test account
+      if (email == AuthService.testEmail && password == AuthService.testPassword) {
+        // First try to create the account
+        try {
+          await _authService.signUpWithEmail(email, password);
+        } catch (e) {
+          // If account already exists, try to sign in
+          if (e is FirebaseAuthException && e.code == 'email-already-in-use') {
+            await _authService.signInWithEmail(email, password);
+          } else {
+            rethrow;
+          }
+        }
+      } else {
+        await _authService.signInWithEmail(email, password);
+      }
     } catch (e) {
       Get.snackbar(
         'Error',
