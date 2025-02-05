@@ -6,18 +6,30 @@ import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
 import 'firebase_options.dart';
 
+class InitialBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.put(AuthController(), permanent: true);
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  // Initialize auth controller
-  Get.put(AuthController());
+  try {
+    // Initialize Firebase only if it hasn't been initialized yet
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
 
-  runApp(const MyApp());
+    runApp(const MyApp());
+  } catch (e) {
+    print('Error initializing app: $e');
+    // Still run the app even if Firebase fails
+    runApp(const MyApp());
+  }
 }
 
 class MyApp extends StatelessWidget {
@@ -33,6 +45,7 @@ class MyApp extends StatelessWidget {
       initialRoute: AppPages.initial,
       getPages: AppPages.routes,
       debugShowCheckedModeBanner: false,
+      initialBinding: InitialBinding(),
     );
   }
 }

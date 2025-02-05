@@ -1,16 +1,85 @@
-# flutter_firebase_app_new
+# Reel AI - Flutter Video Learning App
 
-A new Flutter project.
+A modern video learning platform built with Flutter and Firebase.
+
+## Features
+
+- User Authentication (Email/Password and Google Sign-in)
+- Video Upload and Recording
+- Feed with Video Playback
+- Profile Management
+- Category-based Content Discovery
+- Dark/Light Theme Support
+
+## Tech Stack
+
+- Flutter
+- Firebase (Auth, Firestore, Storage)
+- GetX for State Management
+- Camera Plugin for Video Recording
+- File Picker for Video Upload
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK
+- Firebase Project
+- Android Studio / VS Code
+- Git
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Installation
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/flutter_firebase_app_new.git
+```
+
+2. Install dependencies
+```bash
+flutter pub get
+```
+
+3. Configure Firebase
+- Create a new Firebase project
+- Add Android and iOS apps to your Firebase project
+- Download and place the configuration files:
+  - `google-services.json` for Android
+  - `GoogleService-Info.plist` for iOS
+  - Update `firebase_options.dart` with your Firebase configuration
+
+4. Run the app
+```bash
+flutter run
+```
+
+## Project Structure
+
+```
+lib/
+├── core/
+│   ├── constants/
+│   ├── routes/
+│   ├── theme/
+│   └── widgets/
+├── features/
+│   ├── auth/
+│   ├── feed/
+│   ├── create/
+│   ├── discover/
+│   ├── profile/
+│   └── navigation/
+└── main.dart
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

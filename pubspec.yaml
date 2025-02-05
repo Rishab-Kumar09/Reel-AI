@@ -51,9 +51,8 @@ dependencies:
   google_sign_in: ^6.1.6
 
   # Video Player
-  better_player: ^0.0.83
-  video_compress: ^3.1.2
   video_player: ^2.8.1
+  video_compress: ^3.1.2
 
   # Utilities
   logger: ^2.0.2+1
@@ -69,6 +68,9 @@ dependencies:
 
   # Added from the code block
   file_picker: ^6.1.1
+
+  # Added from the code block
+  camera: ^0.10.5+9
 
 dev_dependencies:
   flutter_test:

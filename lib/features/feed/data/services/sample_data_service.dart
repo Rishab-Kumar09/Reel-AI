@@ -17,23 +17,25 @@ class SampleDataService {
     try {
       print('Downloading video from: $videoUrl');
       final response = await http.get(Uri.parse(videoUrl));
-      
+
       if (response.statusCode != 200) {
         throw 'Failed to download video from source';
       }
 
       print('Uploading video to Firebase Storage: $fileName');
       final storageRef = _storage.ref().child('videos/$fileName');
-      
+
       // Upload video to Firebase Storage
-      await storageRef.putData(response.bodyBytes, SettableMetadata(
-        contentType: 'video/mp4',
-      ));
+      await storageRef.putData(
+          response.bodyBytes,
+          SettableMetadata(
+            contentType: 'video/mp4',
+          ));
 
       // Get the download URL
       final downloadUrl = await storageRef.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
-      
+
       return downloadUrl;
     } catch (e) {
       print('Error uploading video to storage: $e');
@@ -46,7 +48,7 @@ class SampleDataService {
       print('Fetching video URLs from Firebase Storage...');
       final storageRef = _storage.ref().child('videos');
       final ListResult result = await storageRef.listAll();
-      
+
       Map<String, String> videoUrls = {};
       for (var item in result.items) {
         final String url = await item.getDownloadURL();
@@ -63,7 +65,7 @@ class SampleDataService {
   Future<void> addSampleVideos() async {
     try {
       print('Starting to add sample videos...');
-      
+
       // First test if we can write to Firestore
       try {
         print('Testing Firestore write access...');
@@ -83,7 +85,7 @@ class SampleDataService {
       // Get all video URLs from storage
       final videoUrls = await _getStorageVideoUrls();
       print('Available videos in storage: ${videoUrls.keys.join(", ")}');
-      
+
       // Video 1
       if (videoUrls.containsKey('vertical_video1.mp4')) {
         print('Adding Video 1...');
@@ -253,10 +255,10 @@ class SampleDataService {
     try {
       print('Getting download URLs for uploaded videos...');
       final storageRef = _storage.ref().child('videos');
-      
+
       // List all files in the videos directory
       final ListResult result = await storageRef.listAll();
-      
+
       // Get download URLs for each file
       for (var item in result.items) {
         final String url = await item.getDownloadURL();
@@ -271,13 +273,17 @@ class SampleDataService {
   Future<void> uploadSampleVideos() async {
     try {
       print('Starting to upload sample videos to Firebase Storage...');
-      
+
       // List of vertical format videos from reliable sources
       final Map<String, String> sampleVideos = {
-        'vertical_video1.mp4': 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        'vertical_video2.mp4': 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-        'vertical_video3.mp4': 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
-        'vertical_video4.mp4': 'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
+        'vertical_video1.mp4':
+            'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+        'vertical_video2.mp4':
+            'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
+        'vertical_video3.mp4':
+            'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
+        'vertical_video4.mp4':
+            'https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4',
       };
 
       for (var entry in sampleVideos.entries) {
@@ -302,12 +308,12 @@ class SampleDataService {
   Future<String> _uploadVideoFile(File videoFile, String fileName) async {
     try {
       print('Processing video for upload: $fileName');
-      
+
       // Upload directly if it's already an MP4 file
       if (fileName.toLowerCase().endsWith('.mp4')) {
         print('File is already MP4, uploading directly');
         final storageRef = _storage.ref().child('videos/$fileName');
-        
+
         // Upload video to Firebase Storage
         await storageRef.putFile(
           videoFile,
@@ -317,10 +323,10 @@ class SampleDataService {
         // Get the download URL
         final downloadUrl = await storageRef.getDownloadURL();
         print('Video uploaded successfully. Download URL: $downloadUrl');
-        
+
         return downloadUrl;
       }
-      
+
       // For non-MP4 files, try to compress and convert
       try {
         print('Attempting to compress video...');
@@ -335,7 +341,8 @@ class SampleDataService {
           throw 'Failed to process video';
         }
 
-        print('Video processed successfully. Size: ${mediaInfo!.filesize} bytes');
+        print(
+            'Video processed successfully. Size: ${mediaInfo!.filesize} bytes');
         fileName = '${path.basenameWithoutExtension(fileName)}.mp4';
 
         final storageRef = _storage.ref().child('videos/$fileName');
@@ -357,7 +364,7 @@ class SampleDataService {
       } catch (e) {
         print('Error compressing video: $e');
         print('Falling back to direct upload...');
-        
+
         // Fallback: Upload the original file if compression fails
         final storageRef = _storage.ref().child('videos/$fileName');
         await storageRef.putFile(
@@ -381,6 +388,7 @@ class SampleDataService {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowCompression: true,
+        withData: true, // This ensures we get the file data
       );
 
       if (result == null || result.files.isEmpty) {
@@ -388,48 +396,66 @@ class SampleDataService {
       }
 
       PlatformFile file = result.files.first;
-      if (file.bytes == null) {
-        throw 'No video data available';
+
+      // Check if we have the file data
+      if (file.bytes == null && file.path == null) {
+        throw 'No video data available - both bytes and path are null';
       }
 
       // Generate a unique filename
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      
       print('Uploading video to Firebase Storage: $fileName');
+
       final storageRef = _storage.ref().child('videos/$fileName');
-      
-      // Upload video bytes to Firebase Storage
-      await storageRef.putData(
-        file.bytes!,
-        SettableMetadata(contentType: 'video/mp4'),
-      );
 
-      // Get the download URL
-      final downloadUrl = await storageRef.getDownloadURL();
-      print('Video uploaded successfully. Download URL: $downloadUrl');
+      try {
+        if (file.bytes != null) {
+          // Upload using bytes
+          await storageRef.putData(
+            file.bytes!,
+            SettableMetadata(contentType: 'video/mp4'),
+          );
+        } else if (file.path != null) {
+          // Upload using file path
+          await storageRef.putFile(
+            File(file.path!),
+            SettableMetadata(contentType: 'video/mp4'),
+          );
+        } else {
+          throw 'No valid video data available';
+        }
 
-      // Add video metadata to Firestore
-      await _addVideo(
-        userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
-        username: '@user_${DateTime.now().millisecondsSinceEpoch}',
-        videoUrl: downloadUrl,
-        thumbnailUrl: 'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
-        description: 'New video upload',
-        category: 'general',
-        isVertical: true,
-        topics: ['General'],
-        skills: ['Content Creation'],
-        difficultyLevel: 'beginner',
-        aiMetadata: {
-          'content_tags': ['User Upload'],
-          'key_moments': {
-            'full': [0, 100],
+        // Get the download URL
+        final downloadUrl = await storageRef.getDownloadURL();
+        print('Video uploaded successfully. Download URL: $downloadUrl');
+
+        // Add video metadata to Firestore
+        await _addVideo(
+          userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
+          username: '@user_${DateTime.now().millisecondsSinceEpoch}',
+          videoUrl: downloadUrl,
+          thumbnailUrl:
+              'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
+          description: 'New video upload',
+          category: 'general',
+          isVertical: true,
+          topics: ['General'],
+          skills: ['Content Creation'],
+          difficultyLevel: 'beginner',
+          aiMetadata: {
+            'content_tags': ['User Upload'],
+            'key_moments': {
+              'full': [0, 100],
+            },
           },
-        },
-      );
+        );
+      } catch (e) {
+        print('Error uploading video data: $e');
+        rethrow;
+      }
     } catch (e) {
-      print('Error uploading video: $e');
+      print('Error in uploadVideoFromDevice: $e');
       rethrow;
     }
   }
-} 
+}

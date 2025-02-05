@@ -3,7 +3,17 @@ import 'package:flutter_firebase_app_new/features/auth/presentation/views/login_
 import 'package:flutter_firebase_app_new/features/auth/presentation/views/signup_view.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/views/feed_view.dart';
 import 'package:flutter_firebase_app_new/features/profile/presentation/views/profile_view.dart';
+import 'package:flutter_firebase_app_new/features/navigation/presentation/views/main_navigation_view.dart';
+import 'package:flutter_firebase_app_new/features/create/presentation/views/camera_view.dart';
 import 'package:flutter_firebase_app_new/core/routes/app_routes.dart';
+import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
+
+class MainNavigationBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<AuthController>(() => AuthController());
+  }
+}
 
 class AppPages {
   static const initial = Routes.login;
@@ -21,7 +31,8 @@ class AppPages {
     ),
     GetPage(
       name: Routes.feed,
-      page: () => const FeedView(),
+      page: () => const MainNavigationView(),
+      binding: MainNavigationBinding(),
       transition: Transition.fadeIn,
     ),
     GetPage(
@@ -29,5 +40,10 @@ class AppPages {
       page: () => const ProfileView(),
       transition: Transition.fadeIn,
     ),
+    GetPage(
+      name: Routes.camera,
+      page: () => const CameraView(),
+      transition: Transition.fadeIn,
+    ),
   ];
-} 
+}

@@ -5,6 +5,7 @@ import 'package:flutter_firebase_app_new/features/feed/presentation/views/feed_v
 import 'package:flutter_firebase_app_new/features/discover/presentation/views/discover_view.dart';
 import 'package:flutter_firebase_app_new/features/create/presentation/views/create_view.dart';
 import 'package:flutter_firebase_app_new/features/profile/presentation/views/profile_view.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
 
 class MainNavigationView extends StatefulWidget {
   const MainNavigationView({super.key});
@@ -15,7 +16,7 @@ class MainNavigationView extends StatefulWidget {
 
 class _MainNavigationViewState extends State<MainNavigationView> {
   int _currentIndex = 0;
-  
+
   final List<Widget> _screens = [
     const FeedView(),
     const DiscoverView(),
@@ -91,9 +92,28 @@ class _MainNavigationViewState extends State<MainNavigationView> {
                 'Upload Video',
                 style: AppTheme.bodyLarge,
               ),
-              onTap: () {
+              onTap: () async {
                 Get.back();
-                // TODO: Implement video upload
+                try {
+                  final sampleDataService = SampleDataService();
+                  await sampleDataService.uploadVideoFromDevice();
+                  Get.snackbar(
+                    'Success',
+                    'Video uploaded successfully',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.green.withOpacity(0.1),
+                    colorText: Colors.green,
+                  );
+                } catch (e) {
+                  print('Error uploading video: $e');
+                  Get.snackbar(
+                    'Error',
+                    e.toString(),
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.red.withOpacity(0.1),
+                    colorText: Colors.red,
+                  );
+                }
               },
             ),
             ListTile(
@@ -102,9 +122,21 @@ class _MainNavigationViewState extends State<MainNavigationView> {
                 'Record Video',
                 style: AppTheme.bodyLarge,
               ),
-              onTap: () {
+              onTap: () async {
                 Get.back();
-                // TODO: Implement video recording
+                try {
+                  // Navigate to camera screen
+                  Get.toNamed('/camera');
+                } catch (e) {
+                  print('Error launching camera: $e');
+                  Get.snackbar(
+                    'Error',
+                    'Failed to launch camera: $e',
+                    snackPosition: SnackPosition.BOTTOM,
+                    backgroundColor: Colors.red.withOpacity(0.1),
+                    colorText: Colors.red,
+                  );
+                }
               },
             ),
           ],
@@ -112,4 +144,4 @@ class _MainNavigationViewState extends State<MainNavigationView> {
       ),
     );
   }
-} 
+}

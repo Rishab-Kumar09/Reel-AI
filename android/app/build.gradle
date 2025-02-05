@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.reelai.app"
+    namespace "com.example.flutter_firebase_app_new"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -17,7 +17,11 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
+        jvmTarget = JavaVersion.VERSION_1_8.toString()
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
     }
 
     defaultConfig {
@@ -30,14 +34,33 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
+        
+        // Enable R8 code shrinking and obfuscation
+        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.debug
+            // Enables code shrinking, obfuscation, and optimization
+            minifyEnabled true
+            shrinkResources true
+            
+            // Includes the default ProGuard rules files
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
         }
+        debug {
+            // Speed up debug builds
+            minifyEnabled false
+            shrinkResources false
+            debuggable true
+        }
+    }
+
+    dexOptions {
+        preDexLibraries = true
+        maxProcessCount = 8
+        javaMaxHeapSize = "4g"
     }
 }
 
@@ -49,4 +72,7 @@ dependencies {
     implementation platform('com.google.firebase:firebase-bom:32.7.4')
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.android.support:multidex:1.0.3'
+    
+    // Add Kotlin stdlib explicitly to avoid version conflicts
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0"
 }
