@@ -458,4 +458,48 @@ class SampleDataService {
       rethrow;
     }
   }
+
+  Future<void> uploadRecordedVideo(File videoFile) async {
+    try {
+      // Generate a unique filename
+      String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      print('Uploading recorded video to Firebase Storage: $fileName');
+
+      final storageRef = _storage.ref().child('videos/$fileName');
+
+      // Upload the video file
+      await storageRef.putFile(
+        videoFile,
+        SettableMetadata(contentType: 'video/mp4'),
+      );
+
+      // Get the download URL
+      final downloadUrl = await storageRef.getDownloadURL();
+      print('Video uploaded successfully. Download URL: $downloadUrl');
+
+      // Add video metadata to Firestore
+      await _addVideo(
+        userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
+        username: '@user_${DateTime.now().millisecondsSinceEpoch}',
+        videoUrl: downloadUrl,
+        thumbnailUrl:
+            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
+        description: 'Recorded video',
+        category: 'general',
+        isVertical: true,
+        topics: ['General'],
+        skills: ['Content Creation'],
+        difficultyLevel: 'beginner',
+        aiMetadata: {
+          'content_tags': ['User Recording'],
+          'key_moments': {
+            'full': [0, 100],
+          },
+        },
+      );
+    } catch (e) {
+      print('Error uploading recorded video: $e');
+      rethrow;
+    }
+  }
 }

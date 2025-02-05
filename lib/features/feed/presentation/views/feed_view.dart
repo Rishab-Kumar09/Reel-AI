@@ -38,58 +38,58 @@ class _FeedViewState extends State<FeedView> {
           children: [
             // Category filter
             Obx(() => DropdownButton<String>(
-              value: _feedController.selectedCategory.value,
-              dropdownColor: AppTheme.surfaceColor,
-              style: AppTheme.bodyMedium.copyWith(
-                color: AppTheme.textPrimaryColor,
-              ),
-              items: _feedController.categories.map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(
-                    value.capitalize ?? value,
-                    style: AppTheme.bodyMedium.copyWith(
-                      color: AppTheme.textPrimaryColor,
-                    ),
+                  value: _feedController.selectedCategory.value,
+                  dropdownColor: AppTheme.surfaceColor,
+                  style: AppTheme.bodyMedium.copyWith(
+                    color: AppTheme.textPrimaryColor,
                   ),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                if (newValue != null) {
-                  _feedController.setCategory(newValue);
-                }
-              },
-            )),
+                  items: _feedController.categories.map((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(
+                        value.capitalize ?? value,
+                        style: AppTheme.bodyMedium.copyWith(
+                          color: AppTheme.textPrimaryColor,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      _feedController.setCategory(newValue);
+                    }
+                  },
+                )),
             const SizedBox(width: 16),
             // Difficulty filter
             Obx(() => DropdownButton<String>(
-              value: _feedController.selectedDifficulty.value,
-              dropdownColor: AppTheme.surfaceColor,
-              style: AppTheme.bodyMedium.copyWith(
-                color: AppTheme.textPrimaryColor,
-              ),
-              items: [
-                'all',
-                'beginner',
-                'intermediate',
-                'advanced',
-              ].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(
-                    value.capitalize ?? value,
-                    style: AppTheme.bodyMedium.copyWith(
-                      color: AppTheme.textPrimaryColor,
-                    ),
+                  value: _feedController.selectedDifficulty.value,
+                  dropdownColor: AppTheme.surfaceColor,
+                  style: AppTheme.bodyMedium.copyWith(
+                    color: AppTheme.textPrimaryColor,
                   ),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                if (newValue != null) {
-                  _feedController.setDifficulty(newValue);
-                }
-              },
-            )),
+                  items: [
+                    'all',
+                    'beginner',
+                    'intermediate',
+                    'advanced',
+                  ].map((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(
+                        value.capitalize ?? value,
+                        style: AppTheme.bodyMedium.copyWith(
+                          color: AppTheme.textPrimaryColor,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    if (newValue != null) {
+                      _feedController.setDifficulty(newValue);
+                    }
+                  },
+                )),
           ],
         ),
         centerTitle: true,
@@ -105,9 +105,9 @@ class _FeedViewState extends State<FeedView> {
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                 );
-                
+
                 await _sampleDataService.uploadVideoFromDevice();
-                
+
                 Get.snackbar(
                   'Success',
                   'Video uploaded and added to feed',
@@ -116,7 +116,7 @@ class _FeedViewState extends State<FeedView> {
                   colorText: Colors.green,
                   duration: const Duration(seconds: 3),
                 );
-                
+
                 // Refresh the feed to show the new video
                 await _feedController.loadVideos(refresh: true);
               } catch (e) {
@@ -147,16 +147,16 @@ class _FeedViewState extends State<FeedView> {
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                 );
-                
+
                 await _sampleDataService.uploadSampleVideos();
-                
+
                 Get.snackbar(
                   'Success',
                   'Videos uploaded successfully. Adding to feed...',
                   snackPosition: SnackPosition.BOTTOM,
                   duration: const Duration(seconds: 2),
                 );
-                
+
                 await _sampleDataService.addSampleVideos();
                 Get.snackbar(
                   'Success',
@@ -186,7 +186,8 @@ class _FeedViewState extends State<FeedView> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        if (!_feedController.isLoading.value && _feedController.videos.isEmpty) {
+        if (!_feedController.isLoading.value &&
+            _feedController.videos.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -249,71 +250,94 @@ class _FeedViewState extends State<FeedView> {
           itemCount: _feedController.videos.length,
           itemBuilder: (context, index) {
             final video = _feedController.videos[index];
-            return Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                // Video Player
-                VideoPlayerItem(
-                  videoUrl: video.videoUrl,
-                  isVertical: video.isVertical ?? false,
-                ),
-                
-                // Video Actions
-                Positioned(
-                  right: 16,
-                  bottom: 100,
-                  child: VideoActions(
-                    onLike: () => _feedController.likeVideo(video.id),
-                    onComment: () {
-                      // TODO: Implement comment functionality
-                      Get.toNamed('/comments', arguments: video.id);
-                    },
-                    onShare: () => _feedController.shareVideo(video.id),
-                    likes: '${video.likes}',
-                    comments: '${video.comments}',
-                    shares: '${video.shares}',
+            return GestureDetector(
+              onVerticalDragUpdate: (details) {
+                // Allow vertical scrolling
+                if (details.primaryDelta! > 0) {
+                  // Scrolling down
+                  if (index > 0) {
+                    _pageController.previousPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                } else if (details.primaryDelta! < 0) {
+                  // Scrolling up
+                  if (index < _feedController.videos.length - 1) {
+                    _pageController.nextPage(
+                      duration: const Duration(milliseconds: 300),
+                      curve: Curves.easeOut,
+                    );
+                  }
+                }
+              },
+              child: Stack(
+                alignment: Alignment.bottomCenter,
+                children: [
+                  // Video Player
+                  VideoPlayerItem(
+                    videoUrl: video.videoUrl,
+                    isVertical: video.isVertical ?? false,
                   ),
-                ),
-                
-                // Video Description
-                Positioned(
-                  left: 16,
-                  right: 72,
-                  bottom: 24,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      VideoDescription(
-                        username: video.username,
-                        description: video.description,
-                        songName: 'Original Audio',
-                      ),
-                      if (video.aiMetadata != null && 
-                          video.aiMetadata!['content_tags'] != null)
-                        Wrap(
-                          spacing: 8,
-                          children: (video.aiMetadata!['content_tags'] as List)
-                              .map((tag) => Chip(
-                                    label: Text(
-                                      '#$tag',
-                                      style: AppTheme.bodySmall.copyWith(
-                                        color: AppTheme.textPrimaryColor,
-                                      ),
-                                    ),
-                                    backgroundColor: AppTheme.primaryColor
-                                        .withOpacity(0.2),
-                                  ))
-                              .take(3)
-                              .toList(),
+
+                  // Video Actions
+                  Positioned(
+                    right: 16,
+                    bottom: 100,
+                    child: VideoActions(
+                      onLike: () => _feedController.likeVideo(video.id),
+                      onComment: () {
+                        // TODO: Implement comment functionality
+                        Get.toNamed('/comments', arguments: video.id);
+                      },
+                      onShare: () => _feedController.shareVideo(video.id),
+                      likes: '${video.likes}',
+                      comments: '${video.comments}',
+                      shares: '${video.shares}',
+                    ),
+                  ),
+
+                  // Video Description
+                  Positioned(
+                    left: 16,
+                    right: 72,
+                    bottom: 24,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        VideoDescription(
+                          username: video.username,
+                          description: video.description,
+                          songName: 'Original Audio',
                         ),
-                    ],
+                        if (video.aiMetadata != null &&
+                            video.aiMetadata!['content_tags'] != null)
+                          Wrap(
+                            spacing: 8,
+                            children:
+                                (video.aiMetadata!['content_tags'] as List)
+                                    .map((tag) => Chip(
+                                          label: Text(
+                                            '#$tag',
+                                            style: AppTheme.bodySmall.copyWith(
+                                              color: AppTheme.textPrimaryColor,
+                                            ),
+                                          ),
+                                          backgroundColor: AppTheme.primaryColor
+                                              .withOpacity(0.2),
+                                        ))
+                                    .take(3)
+                                    .toList(),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             );
           },
         );
       }),
     );
   }
-} 
+}

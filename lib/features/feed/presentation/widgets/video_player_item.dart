@@ -21,6 +21,7 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
   bool _isInitialized = false;
   bool _isMuted = false;
   String? _error;
+  bool _isDoubleTapEnabled = true;
 
   @override
   void initState() {
@@ -32,16 +33,16 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
     try {
       print('Initializing video: ${widget.videoUrl}');
       _videoPlayerController = VideoPlayerController.network(widget.videoUrl);
-      
+
       await _videoPlayerController.initialize();
       print('Video initialized successfully: ${widget.videoUrl}');
-      
+
       if (mounted) {
         setState(() {
           _isInitialized = true;
         });
       }
-      
+
       _videoPlayerController.setLooping(true);
       _videoPlayerController.play();
     } catch (e) {
@@ -64,7 +65,9 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
   void _togglePlayPause() {
     setState(() {
       _isPlaying = !_isPlaying;
-      _isPlaying ? _videoPlayerController.play() : _videoPlayerController.pause();
+      _isPlaying
+          ? _videoPlayerController.play()
+          : _videoPlayerController.pause();
     });
   }
 
@@ -104,10 +107,20 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
         // Video Container
         GestureDetector(
           onTap: _togglePlayPause,
+          onDoubleTapDown: (details) {
+            if (!_isDoubleTapEnabled) return;
+            _isDoubleTapEnabled = false;
+            // Re-enable double tap after a short delay
+            Future.delayed(const Duration(milliseconds: 500), () {
+              _isDoubleTapEnabled = true;
+            });
+          },
+          behavior: HitTestBehavior.opaque,
           child: Container(
             color: Colors.black,
             child: AspectRatio(
-              aspectRatio: MediaQuery.of(context).size.width / MediaQuery.of(context).size.height,
+              aspectRatio: MediaQuery.of(context).size.width /
+                  MediaQuery.of(context).size.height,
               child: Stack(
                 alignment: Alignment.center,
                 children: [
@@ -176,4 +189,4 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
       ],
     );
   }
-} 
+}

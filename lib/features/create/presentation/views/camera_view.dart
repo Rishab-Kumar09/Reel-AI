@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:get/get.dart';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as path;
 
 class CameraView extends StatefulWidget {
   const CameraView({super.key});
@@ -15,6 +19,11 @@ class _CameraViewState extends State<CameraView> {
   late CameraController _cameraController;
   bool _isInitialized = false;
   bool _isRecording = false;
+  bool _isFrontCamera = false;
+  String? _videoPath;
+  Timer? _recordingTimer;
+  int _recordingDuration = 0;
+  static const int maxRecordingDuration = 90; // 90 seconds max
 
   @override
   void initState() {
@@ -37,7 +46,7 @@ class _CameraViewState extends State<CameraView> {
       }
 
       _cameraController = CameraController(
-        cameras[0],
+        cameras[_isFrontCamera ? 1 : 0],
         ResolutionPreset.high,
         enableAudio: true,
       );
@@ -57,47 +66,115 @@ class _CameraViewState extends State<CameraView> {
     }
   }
 
-  Future<void> _toggleRecording() async {
+  void _startTimer() {
+    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      setState(() {
+        _recordingDuration++;
+      });
+
+      if (_recordingDuration >= maxRecordingDuration) {
+        _stopRecording();
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    _recordingDuration = 0;
+  }
+
+  Future<void> _startRecording() async {
     if (!_isInitialized) return;
 
     try {
-      if (_isRecording) {
-        final XFile video = await _cameraController.stopVideoRecording();
-        setState(() {
-          _isRecording = false;
-        });
+      final Directory appDir = await getTemporaryDirectory();
+      final String videoDirectory = '${appDir.path}/Videos';
+      await Directory(videoDirectory).create(recursive: true);
 
-        // Upload the recorded video
-        try {
-          final sampleDataService = SampleDataService();
-          await sampleDataService.uploadVideoFromDevice();
-          Get.snackbar(
-            'Success',
-            'Video uploaded successfully',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.green.withOpacity(0.1),
-            colorText: Colors.green,
-          );
-          Get.back(); // Return to previous screen
-        } catch (e) {
-          Get.snackbar(
-            'Error',
-            'Failed to upload video: $e',
-            snackPosition: SnackPosition.BOTTOM,
-            backgroundColor: Colors.red.withOpacity(0.1),
-            colorText: Colors.red,
-          );
-        }
-      } else {
-        await _cameraController.startVideoRecording();
-        setState(() {
-          _isRecording = true;
-        });
+      final String fileName =
+          'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final String filePath = '$videoDirectory/$fileName';
+
+      await _cameraController.startVideoRecording();
+      _startTimer();
+
+      setState(() {
+        _isRecording = true;
+        _videoPath = filePath;
+      });
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to start recording: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.1),
+        colorText: Colors.red,
+      );
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (!_isRecording) return;
+
+    try {
+      final XFile video = await _cameraController.stopVideoRecording();
+      _stopTimer();
+
+      setState(() {
+        _isRecording = false;
+      });
+
+      // Upload the recorded video
+      try {
+        final sampleDataService = SampleDataService();
+        await sampleDataService.uploadRecordedVideo(File(video.path));
+        Get.snackbar(
+          'Success',
+          'Video uploaded successfully',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.withOpacity(0.1),
+          colorText: Colors.green,
+        );
+        Get.back(); // Return to previous screen
+      } catch (e) {
+        Get.snackbar(
+          'Error',
+          'Failed to upload video: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.1),
+          colorText: Colors.red,
+        );
       }
     } catch (e) {
       Get.snackbar(
         'Error',
-        'Failed to ${_isRecording ? 'stop' : 'start'} recording: $e',
+        'Failed to stop recording: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.1),
+        colorText: Colors.red,
+      );
+    }
+  }
+
+  Future<void> _toggleCamera() async {
+    if (!_isInitialized || _isRecording) return;
+
+    try {
+      final cameras = await availableCameras();
+      if (cameras.length < 2) return;
+
+      setState(() {
+        _isFrontCamera = !_isFrontCamera;
+        _isInitialized = false;
+      });
+
+      await _cameraController.dispose();
+      await _initializeCamera();
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to switch camera: $e',
         snackPosition: SnackPosition.BOTTOM,
         backgroundColor: Colors.red.withOpacity(0.1),
         colorText: Colors.red,
@@ -107,8 +184,15 @@ class _CameraViewState extends State<CameraView> {
 
   @override
   void dispose() {
+    _stopTimer();
     _cameraController.dispose();
     super.dispose();
+  }
+
+  String _formatDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
   @override
@@ -130,6 +214,44 @@ class _CameraViewState extends State<CameraView> {
             child: CameraPreview(_cameraController),
           ),
 
+          // Recording Timer
+          if (_isRecording)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _formatDuration(_recordingDuration),
+                        style: AppTheme.bodyMedium.copyWith(
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
           // Controls
           Positioned(
             bottom: 32,
@@ -148,7 +270,7 @@ class _CameraViewState extends State<CameraView> {
 
                 // Record Button
                 GestureDetector(
-                  onTap: _toggleRecording,
+                  onTap: _isRecording ? _stopRecording : _startRecording,
                   child: Container(
                     width: 72,
                     height: 72,
@@ -160,6 +282,15 @@ class _CameraViewState extends State<CameraView> {
                         width: 4,
                       ),
                     ),
+                    child: _isRecording
+                        ? const Center(
+                            child: Icon(
+                              Icons.stop,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          )
+                        : null,
                   ),
                 ),
 
@@ -168,26 +299,7 @@ class _CameraViewState extends State<CameraView> {
                   icon: const Icon(Icons.flip_camera_ios),
                   color: Colors.white,
                   iconSize: 32,
-                  onPressed: () async {
-                    final cameras = await availableCameras();
-                    final currentCamera = _cameraController.description;
-                    final newCamera = cameras.firstWhere(
-                      (camera) =>
-                          camera.lensDirection != currentCamera.lensDirection,
-                      orElse: () => currentCamera,
-                    );
-
-                    if (newCamera != currentCamera) {
-                      await _cameraController.dispose();
-                      _cameraController = CameraController(
-                        newCamera,
-                        ResolutionPreset.high,
-                        enableAudio: true,
-                      );
-                      await _cameraController.initialize();
-                      setState(() {});
-                    }
-                  },
+                  onPressed: _toggleCamera,
                 ),
               ],
             ),
