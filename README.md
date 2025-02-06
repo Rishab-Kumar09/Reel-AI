@@ -1,6 +1,6 @@
 # Reel AI - Flutter Video Learning App
 
-A modern video learning platform built with Flutter and Firebase.
+A modern short video platform built with Flutter and Firebase.
 
 ## Features
 
