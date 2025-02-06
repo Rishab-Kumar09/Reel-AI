@@ -52,18 +52,61 @@ class _ProfileViewState extends State<ProfileView> {
     }
   }
 
+  Future<void> _handleLogout() async {
+    try {
+      await _authController.signOut();
+      Get.offAllNamed('/login'); // Navigate to login screen after logout
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to logout: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.1),
+        colorText: Colors.red,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Profile'),
+        actions: [
+          // Logout button in app bar
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: _handleLogout,
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Obx(() {
             final user = _authController.user.value;
-            if (user == null) return const CircularProgressIndicator();
+            if (user == null && _authController.isLoading.value) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (user == null) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Not logged in',
+                      style: AppTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => Get.offAllNamed('/login'),
+                      child: const Text('Go to Login'),
+                    ),
+                  ],
+                ),
+              );
+            }
 
             return Form(
               key: _formKey,
@@ -75,7 +118,8 @@ class _ProfileViewState extends State<ProfileView> {
                       children: [
                         CircleAvatar(
                           radius: 50,
-                          backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+                          backgroundColor:
+                              AppTheme.primaryColor.withOpacity(0.1),
                           backgroundImage: user.photoUrl != null
                               ? NetworkImage(user.photoUrl!)
                               : null,
@@ -107,6 +151,14 @@ class _ProfileViewState extends State<ProfileView> {
                         ),
                       ],
                     ),
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    user.email,
+                    style: AppTheme.bodyLarge.copyWith(
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
                   CustomTextField(
@@ -142,6 +194,16 @@ class _ProfileViewState extends State<ProfileView> {
                               )
                             : const Text('Update Profile'),
                       )),
+                  const SizedBox(height: 16),
+                  // Logout button at bottom
+                  OutlinedButton.icon(
+                    onPressed: _handleLogout,
+                    icon: const Icon(Icons.logout),
+                    label: const Text('Logout'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                    ),
+                  ),
                 ],
               ),
             );
@@ -150,4 +212,4 @@ class _ProfileViewState extends State<ProfileView> {
       ),
     );
   }
-} 
+}

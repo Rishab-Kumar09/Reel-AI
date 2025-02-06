@@ -31,11 +31,8 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
 
   void _initializeVideo() async {
     try {
-      print('Initializing video: ${widget.videoUrl}');
       _videoPlayerController = VideoPlayerController.network(widget.videoUrl);
-
       await _videoPlayerController.initialize();
-      print('Video initialized successfully: ${widget.videoUrl}');
 
       if (mounted) {
         setState(() {
@@ -57,7 +54,6 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
 
   @override
   void dispose() {
-    print('Disposing video controller for: ${widget.videoUrl}');
     _videoPlayerController.dispose();
     super.dispose();
   }
@@ -110,7 +106,6 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
           onDoubleTapDown: (details) {
             if (!_isDoubleTapEnabled) return;
             _isDoubleTapEnabled = false;
-            // Re-enable double tap after a short delay
             Future.delayed(const Duration(milliseconds: 500), () {
               _isDoubleTapEnabled = true;
             });
@@ -118,45 +113,22 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
           behavior: HitTestBehavior.opaque,
           child: Container(
             color: Colors.black,
-            child: AspectRatio(
-              aspectRatio: MediaQuery.of(context).size.width /
-                  MediaQuery.of(context).size.height,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Video with cover fit
-                  FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _videoPlayerController.value.size.width,
-                      height: _videoPlayerController.value.size.height,
-                      child: VideoPlayer(_videoPlayerController),
-                    ),
+            child: Center(
+              child: SizedBox.expand(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _videoPlayerController.value.size.width,
+                    height: _videoPlayerController.value.size.height,
+                    child: VideoPlayer(_videoPlayerController),
                   ),
-                  // Letterboxing overlay for horizontal videos
-                  if (!widget.isVertical)
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.3),
-                            Colors.transparent,
-                            Colors.transparent,
-                            Colors.black.withOpacity(0.3),
-                          ],
-                          stops: const [0.0, 0.2, 0.8, 1.0],
-                        ),
-                      ),
-                    ),
-                ],
+                ),
               ),
             ),
           ),
         ),
 
-        // Play/Pause overlay (centered)
+        // Play/Pause overlay
         if (!_isPlaying)
           Center(
             child: Container(
@@ -173,7 +145,7 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
             ),
           ),
 
-        // Volume control button (bottom right)
+        // Volume control button
         Positioned(
           right: 8,
           bottom: 220,

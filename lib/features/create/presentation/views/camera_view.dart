@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:get/get.dart';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
@@ -47,11 +48,20 @@ class _CameraViewState extends State<CameraView> {
 
       _cameraController = CameraController(
         cameras[_isFrontCamera ? 1 : 0],
-        ResolutionPreset.high,
+        ResolutionPreset.max,
         enableAudio: true,
+        imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await _cameraController.initialize();
+
+      // Lock to portrait mode and set optimal video recording size
+      await _cameraController
+          .lockCaptureOrientation(DeviceOrientation.portraitUp);
+
+      // Set video recording format to highest quality
+      await _cameraController.prepareForVideoRecording();
+
       setState(() {
         _isInitialized = true;
       });

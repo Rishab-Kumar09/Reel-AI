@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
@@ -11,6 +12,7 @@ class FeedController extends GetxController {
   final RxBool isLoading = false.obs;
   final RxString selectedCategory = 'all'.obs;
   final RxString selectedDifficulty = 'all'.obs;
+  StreamSubscription<QuerySnapshot>? _videosSubscription;
 
   // Available categories
   final List<String> categories = [
@@ -30,7 +32,51 @@ class FeedController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    loadVideos();
+    _setupVideoStream();
+  }
+
+  @override
+  void onClose() {
+    _videosSubscription?.cancel();
+    super.onClose();
+  }
+
+  void _setupVideoStream() {
+    print('Setting up video stream...');
+    Query query = _firestore
+        .collection('videos')
+        .orderBy('createdAt', descending: true)
+        .limit(_limit);
+
+    if (selectedCategory.value != 'all') {
+      query = query.where('category', isEqualTo: selectedCategory.value);
+    }
+
+    if (selectedDifficulty.value != 'all') {
+      query =
+          query.where('difficultyLevel', isEqualTo: selectedDifficulty.value);
+    }
+
+    _videosSubscription?.cancel();
+    _videosSubscription = query.snapshots().listen(
+      (snapshot) {
+        print('Received video update from Firestore');
+        if (snapshot.docs.isEmpty) {
+          hasMore.value = false;
+          return;
+        }
+
+        _lastDocument = snapshot.docs.last;
+        final newVideos =
+            snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
+
+        videos.value = newVideos;
+        print('Updated videos list with ${newVideos.length} videos');
+      },
+      onError: (error) {
+        print('Error in video stream: $error');
+      },
+    );
   }
 
   Future<void> loadVideos({bool refresh = false}) async {
@@ -39,15 +85,17 @@ class FeedController extends GetxController {
       videos.clear();
       _lastDocument = null;
       hasMore.value = true;
+      _setupVideoStream();
+      return;
     }
     if (!hasMore.value) return;
 
     try {
       isLoading.value = true;
-      print('Loading videos with category: ${selectedCategory.value}');
+      print('Loading more videos...');
 
-      // Build query based on filters
-      Query query = _firestore.collection('videos')
+      Query query = _firestore
+          .collection('videos')
           .orderBy('createdAt', descending: true)
           .limit(_limit);
 
@@ -56,33 +104,28 @@ class FeedController extends GetxController {
       }
 
       if (selectedDifficulty.value != 'all') {
-        query = query.where('difficultyLevel', isEqualTo: selectedDifficulty.value);
+        query =
+            query.where('difficultyLevel', isEqualTo: selectedDifficulty.value);
       }
 
-      // Apply pagination
       if (_lastDocument != null) {
         query = query.startAfterDocument(_lastDocument!);
       }
 
-      print('Executing Firestore query...');
       final QuerySnapshot snapshot = await query.get();
-      print('Got ${snapshot.docs.length} videos from Firestore');
-
       if (snapshot.docs.isEmpty) {
         hasMore.value = false;
         return;
       }
 
       _lastDocument = snapshot.docs.last;
-
-      final newVideos = snapshot.docs
-          .map((doc) => VideoModel.fromFirestore(doc))
-          .toList();
+      final newVideos =
+          snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
 
       videos.addAll(newVideos);
-      print('Added ${newVideos.length} videos to the feed');
+      print('Added ${newVideos.length} more videos to the feed');
     } catch (e, stackTrace) {
-      print('Error loading videos: $e');
+      print('Error loading more videos: $e');
       print('Stack trace: $stackTrace');
     } finally {
       isLoading.value = false;
@@ -98,7 +141,7 @@ class FeedController extends GetxController {
       final likeRef = _firestore.collection('likes').doc('${videoId}_$userId');
 
       final likeDoc = await likeRef.get();
-      
+
       await _firestore.runTransaction((transaction) async {
         if (likeDoc.exists) {
           // Unlike
@@ -196,4 +239,4 @@ class FeedController extends GetxController {
       print('Error sharing video: $e');
     }
   }
-} 
+}
