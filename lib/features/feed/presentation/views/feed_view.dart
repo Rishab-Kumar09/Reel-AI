@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/controllers/feed_controller.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/video_player_item.dart';
@@ -32,37 +33,44 @@ class _FeedViewState extends State<FeedView> {
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
-        title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Category filter
-            Obx(() => DropdownButton<String>(
-                  value: _feedController.selectedCategory.value,
-                  dropdownColor: AppTheme.surfaceColor,
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.textPrimaryColor,
-                  ),
-                  items: _feedController.categories.map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(
+        systemOverlayStyle: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
+          systemNavigationBarIconBrightness: Brightness.light,
+        ),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: _feedController.setCategory,
+            color: Colors.black87,
+            itemBuilder: (BuildContext context) {
+              return _feedController.categories.map((String value) {
+                final isSelected =
+                    _feedController.selectedCategory.value == value;
+                return PopupMenuItem<String>(
+                  value: value,
+                  child: Row(
+                    children: [
+                      if (isSelected)
+                        const Icon(Icons.check, color: Colors.white, size: 18),
+                      if (isSelected) const SizedBox(width: 8),
+                      Text(
                         value.capitalize ?? value,
                         style: AppTheme.bodyMedium.copyWith(
                           color: AppTheme.textPrimaryColor,
                         ),
                       ),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      _feedController.setCategory(newValue);
-                    }
-                  },
-                )),
-          ],
-        ),
-        centerTitle: true,
+                    ],
+                  ),
+                );
+              }).toList();
+            },
+          ),
+        ],
       ),
       body: Obx(() {
         if (_feedController.isLoading.value && _feedController.videos.isEmpty) {
