@@ -117,16 +117,21 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
           child: Container(
             color: Colors.black,
             child: Center(
-              child: SizedBox.expand(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _videoPlayerController.value.size.width,
-                    height: _videoPlayerController.value.size.height,
-                    child: VideoPlayer(_videoPlayerController),
-                  ),
-                ),
-              ),
+              child: widget.isVertical
+                  ? SizedBox.expand(
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _videoPlayerController.value.size.width,
+                          height: _videoPlayerController.value.size.height,
+                          child: VideoPlayer(_videoPlayerController),
+                        ),
+                      ),
+                    )
+                  : AspectRatio(
+                      aspectRatio: _videoPlayerController.value.aspectRatio,
+                      child: VideoPlayer(_videoPlayerController),
+                    ),
             ),
           ),
         ),
