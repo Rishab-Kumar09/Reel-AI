@@ -11,7 +11,6 @@ class FeedController extends GetxController {
   final RxList<VideoModel> videos = <VideoModel>[].obs;
   final RxBool isLoading = false.obs;
   final RxString selectedCategory = 'all'.obs;
-  final RxString selectedDifficulty = 'all'.obs;
   StreamSubscription<QuerySnapshot>? _videosSubscription;
 
   // Available categories
@@ -50,11 +49,6 @@ class FeedController extends GetxController {
 
     if (selectedCategory.value != 'all') {
       query = query.where('category', isEqualTo: selectedCategory.value);
-    }
-
-    if (selectedDifficulty.value != 'all') {
-      query =
-          query.where('difficultyLevel', isEqualTo: selectedDifficulty.value);
     }
 
     _videosSubscription?.cancel();
@@ -101,11 +95,6 @@ class FeedController extends GetxController {
 
       if (selectedCategory.value != 'all') {
         query = query.where('category', isEqualTo: selectedCategory.value);
-      }
-
-      if (selectedDifficulty.value != 'all') {
-        query =
-            query.where('difficultyLevel', isEqualTo: selectedDifficulty.value);
       }
 
       if (_lastDocument != null) {
@@ -172,6 +161,7 @@ class FeedController extends GetxController {
           username: video.username,
           videoUrl: video.videoUrl,
           thumbnailUrl: video.thumbnailUrl,
+          title: video.title,
           description: video.description,
           category: video.category,
           topics: video.topics,
@@ -198,13 +188,6 @@ class FeedController extends GetxController {
     }
   }
 
-  void setDifficulty(String difficulty) {
-    if (selectedDifficulty.value != difficulty) {
-      selectedDifficulty.value = difficulty;
-      loadVideos(refresh: true);
-    }
-  }
-
   Future<void> shareVideo(String videoId) async {
     try {
       await _firestore.collection('videos').doc(videoId).update({
@@ -221,6 +204,7 @@ class FeedController extends GetxController {
           username: video.username,
           videoUrl: video.videoUrl,
           thumbnailUrl: video.thumbnailUrl,
+          title: video.title,
           description: video.description,
           category: video.category,
           topics: video.topics,

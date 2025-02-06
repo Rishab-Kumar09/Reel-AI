@@ -94,6 +94,7 @@ class SampleDataService {
           username: '@creator_one',
           videoUrl: videoUrls['vertical_video1.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video1/300/500',
+          title: 'Creative Content Creation Tips',
           description: 'Check out this amazing content! 🎥 #creative #awesome',
           category: 'art',
           isVertical: true,
@@ -121,6 +122,7 @@ class SampleDataService {
           username: '@creator_two',
           videoUrl: videoUrls['vertical_video2.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video2/300/500',
+          title: 'Epic Adventure Moments',
           description: 'Epic adventure moments 🌟 #adventure #fun',
           category: 'entertainment',
           isVertical: true,
@@ -148,6 +150,7 @@ class SampleDataService {
           username: '@creator_three',
           videoUrl: videoUrls['vertical_video3.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video3/300/500',
+          title: 'Essential Learning Skills Guide',
           description: 'Learning new skills 📚 #education #learning',
           category: 'education',
           isVertical: true,
@@ -175,6 +178,7 @@ class SampleDataService {
           username: '@creator_four',
           videoUrl: videoUrls['vertical_video4.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video4/300/500',
+          title: 'Must-Know Life Hacks',
           description: 'Life hacks you need to know! 💡 #lifehacks #tips',
           category: 'lifehacks',
           isVertical: true,
@@ -211,6 +215,7 @@ class SampleDataService {
     required String username,
     required String videoUrl,
     required String thumbnailUrl,
+    required String title,
     required String description,
     required String category,
     required List<String> topics,
@@ -226,6 +231,7 @@ class SampleDataService {
         'username': username,
         'videoUrl': videoUrl,
         'thumbnailUrl': thumbnailUrl,
+        'title': title,
         'description': description,
         'category': category,
         'topics': topics,
@@ -382,13 +388,16 @@ class SampleDataService {
     }
   }
 
-  Future<void> uploadVideoFromDevice() async {
+  Future<void> uploadVideoFromDevice({
+    Map<String, dynamic>? metadata,
+    Function(double)? onProgress,
+  }) async {
     try {
       // Pick video file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowCompression: true,
-        withData: true, // This ensures we get the file data
+        withData: true,
       );
 
       if (result == null || result.files.isEmpty) {
@@ -397,7 +406,6 @@ class SampleDataService {
 
       PlatformFile file = result.files.first;
 
-      // Check if we have the file data
       if (file.bytes == null && file.path == null) {
         throw 'No video data available - both bytes and path are null';
       }
@@ -409,21 +417,29 @@ class SampleDataService {
       final storageRef = _storage.ref().child('videos/$fileName');
 
       try {
+        UploadTask uploadTask;
         if (file.bytes != null) {
-          // Upload using bytes
-          await storageRef.putData(
+          uploadTask = storageRef.putData(
             file.bytes!,
             SettableMetadata(contentType: 'video/mp4'),
           );
         } else if (file.path != null) {
-          // Upload using file path
-          await storageRef.putFile(
+          uploadTask = storageRef.putFile(
             File(file.path!),
             SettableMetadata(contentType: 'video/mp4'),
           );
         } else {
           throw 'No valid video data available';
         }
+
+        // Listen to upload progress
+        uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          onProgress?.call(progress);
+        });
+
+        // Wait for upload to complete
+        await uploadTask;
 
         // Get the download URL
         final downloadUrl = await storageRef.getDownloadURL();
@@ -436,14 +452,15 @@ class SampleDataService {
           videoUrl: downloadUrl,
           thumbnailUrl:
               'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
-          description: 'New video upload',
-          category: 'general',
+          title: metadata?['title'] ?? 'Untitled Video',
+          description: metadata?['description'] ?? 'New video upload',
+          category: metadata?['category'] ?? 'general',
           isVertical: true,
-          topics: ['General'],
+          topics: metadata?['tags']?.cast<String>() ?? ['General'],
           skills: ['Content Creation'],
-          difficultyLevel: 'beginner',
+          difficultyLevel: metadata?['difficultyLevel'] ?? 'beginner',
           aiMetadata: {
-            'content_tags': ['User Upload'],
+            'content_tags': metadata?['tags'] ?? ['User Upload'],
             'key_moments': {
               'full': [0, 100],
             },
@@ -459,7 +476,11 @@ class SampleDataService {
     }
   }
 
-  Future<void> uploadRecordedVideo(File videoFile) async {
+  Future<void> uploadRecordedVideo(
+    File videoFile, {
+    Map<String, dynamic>? metadata,
+    Function(double)? onProgress,
+  }) async {
     try {
       // Generate a unique filename
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
@@ -468,10 +489,19 @@ class SampleDataService {
       final storageRef = _storage.ref().child('videos/$fileName');
 
       // Upload the video file
-      await storageRef.putFile(
+      final uploadTask = storageRef.putFile(
         videoFile,
         SettableMetadata(contentType: 'video/mp4'),
       );
+
+      // Listen to upload progress
+      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        onProgress?.call(progress);
+      });
+
+      // Wait for upload to complete
+      await uploadTask;
 
       // Get the download URL
       final downloadUrl = await storageRef.getDownloadURL();
@@ -484,14 +514,15 @@ class SampleDataService {
         videoUrl: downloadUrl,
         thumbnailUrl:
             'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
-        description: 'Recorded video',
-        category: 'general',
+        title: metadata?['title'] ?? 'Recorded Video',
+        description: metadata?['description'] ?? 'Recorded video',
+        category: metadata?['category'] ?? 'general',
         isVertical: true,
-        topics: ['General'],
+        topics: metadata?['tags']?.cast<String>() ?? ['General'],
         skills: ['Content Creation'],
-        difficultyLevel: 'beginner',
+        difficultyLevel: metadata?['difficultyLevel'] ?? 'beginner',
         aiMetadata: {
-          'content_tags': ['User Recording'],
+          'content_tags': metadata?['tags'] ?? ['User Recording'],
           'key_moments': {
             'full': [0, 100],
           },

@@ -6,6 +6,7 @@ class VideoModel {
   final String username;
   final String videoUrl;
   final String thumbnailUrl;
+  final String title;
   final String description;
   final String category;
   final List<String> topics;
@@ -19,7 +20,7 @@ class VideoModel {
   final Map<String, dynamic>? aiMetadata; // Stores AI-generated insights
   final Map<String, List<double>>? timestamps; // Key moments in video
   final Map<String, String>? transcription; // Time-stamped transcription
-  final bool isVertical;
+  final bool? isVertical;
 
   const VideoModel({
     required this.id,
@@ -27,6 +28,7 @@ class VideoModel {
     required this.username,
     required this.videoUrl,
     required this.thumbnailUrl,
+    required this.title,
     required this.description,
     required this.category,
     required this.topics,
@@ -40,7 +42,7 @@ class VideoModel {
     this.aiMetadata,
     this.timestamps,
     this.transcription,
-    this.isVertical = false,
+    this.isVertical,
   });
 
   // Convert Firestore document to VideoModel
@@ -52,6 +54,7 @@ class VideoModel {
       username: data['username'] ?? '',
       videoUrl: data['videoUrl'] ?? '',
       thumbnailUrl: data['thumbnailUrl'] ?? '',
+      title: data['title'] ?? '',
       description: data['description'] ?? '',
       category: data['category'] ?? '',
       topics: List<String>.from(data['topics'] ?? []),
@@ -76,6 +79,7 @@ class VideoModel {
       'username': username,
       'videoUrl': videoUrl,
       'thumbnailUrl': thumbnailUrl,
+      'title': title,
       'description': description,
       'category': category,
       'topics': topics,
@@ -92,4 +96,4 @@ class VideoModel {
       'isVertical': isVertical,
     };
   }
-} 
+}

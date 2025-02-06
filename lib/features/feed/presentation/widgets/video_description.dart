@@ -5,12 +5,14 @@ class VideoDescription extends StatelessWidget {
   final String username;
   final String description;
   final String songName;
+  final String title;
 
   const VideoDescription({
     super.key,
     required this.username,
     required this.description,
     required this.songName,
+    required this.title,
   });
 
   @override
@@ -19,6 +21,16 @@ class VideoDescription extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Title
+        Text(
+          title,
+          style: AppTheme.titleLarge.copyWith(
+            color: AppTheme.textPrimaryColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+
         // Username
         Text(
           username,
@@ -28,7 +40,7 @@ class VideoDescription extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        
+
         // Description
         Text(
           description,
@@ -39,7 +51,7 @@ class VideoDescription extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         const SizedBox(height: 8),
-        
+
         // Song name
         Row(
           children: [
@@ -64,4 +76,4 @@ class VideoDescription extends StatelessWidget {
       ],
     );
   }
-} 
+}

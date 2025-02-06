@@ -8,6 +8,7 @@ import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
+import 'package:flutter_firebase_app_new/features/create/presentation/widgets/video_metadata_form.dart';
 
 class CameraView extends StatefulWidget {
   const CameraView({super.key});
@@ -135,27 +136,87 @@ class _CameraViewState extends State<CameraView> {
         _isRecording = false;
       });
 
-      // Upload the recorded video
-      try {
-        final sampleDataService = SampleDataService();
-        await sampleDataService.uploadRecordedVideo(File(video.path));
-        Get.snackbar(
-          'Success',
-          'Video uploaded successfully',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.green.withOpacity(0.1),
-          colorText: Colors.green,
-        );
-        Get.back(); // Return to previous screen
-      } catch (e) {
-        Get.snackbar(
-          'Error',
-          'Failed to upload video: $e',
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: Colors.red.withOpacity(0.1),
-          colorText: Colors.red,
-        );
-      }
+      // Show metadata form
+      Get.dialog(
+        Dialog(
+          child: StatefulBuilder(
+            builder: (context, setState) {
+              bool isLoading = false;
+              double uploadProgress = 0.0;
+              return Stack(
+                children: [
+                  VideoMetadataForm(
+                    isLoading: isLoading,
+                    onSubmit: (metadata) async {
+                      setState(() {
+                        isLoading = true;
+                        uploadProgress = 0.0;
+                      });
+
+                      try {
+                        final sampleDataService = SampleDataService();
+                        await sampleDataService.uploadRecordedVideo(
+                          File(video.path),
+                          metadata: metadata,
+                          onProgress: (progress) {
+                            setState(() {
+                              uploadProgress = progress;
+                            });
+                          },
+                        );
+                        Get.back(); // Close the dialog
+                        Get.back(); // Return to previous screen
+                        Get.snackbar(
+                          'Success',
+                          'Video uploaded successfully',
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.green.withOpacity(0.1),
+                          colorText: Colors.green,
+                        );
+                      } catch (e) {
+                        print('Error uploading video: $e');
+                        Get.snackbar(
+                          'Error',
+                          e.toString(),
+                          snackPosition: SnackPosition.BOTTOM,
+                          backgroundColor: Colors.red.withOpacity(0.1),
+                          colorText: Colors.red,
+                        );
+                      } finally {
+                        setState(() {
+                          isLoading = false;
+                        });
+                      }
+                    },
+                  ),
+                  if (isLoading && uploadProgress > 0)
+                    Positioned.fill(
+                      child: Container(
+                        color: Colors.black54,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            CircularProgressIndicator(
+                              value: uploadProgress,
+                              color: AppTheme.primaryColor,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Uploading video... ${(uploadProgress * 100).toInt()}%',
+                              style: AppTheme.bodyLarge.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      );
     } catch (e) {
       Get.snackbar(
         'Error',

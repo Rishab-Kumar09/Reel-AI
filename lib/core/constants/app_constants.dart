@@ -15,10 +15,11 @@ class AppConstants {
 
   // Categories
   static const List<String> mainCategories = [
-    'Professional Skills',
-    'Communication',
-    'Problem Solving',
-    'Creative Thinking',
-    'Productivity',
+    'all',
+    'tech',
+    'lifehacks',
+    'education',
+    'cooking',
+    'art',
   ];
-} 
+}

@@ -60,36 +60,6 @@ class _FeedViewState extends State<FeedView> {
                     }
                   },
                 )),
-            const SizedBox(width: 16),
-            // Difficulty filter
-            Obx(() => DropdownButton<String>(
-                  value: _feedController.selectedDifficulty.value,
-                  dropdownColor: AppTheme.surfaceColor,
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.textPrimaryColor,
-                  ),
-                  items: [
-                    'all',
-                    'beginner',
-                    'intermediate',
-                    'advanced',
-                  ].map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(
-                        value.capitalize ?? value,
-                        style: AppTheme.bodyMedium.copyWith(
-                          color: AppTheme.textPrimaryColor,
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      _feedController.setDifficulty(newValue);
-                    }
-                  },
-                )),
           ],
         ),
         centerTitle: true,
@@ -222,6 +192,7 @@ class _FeedViewState extends State<FeedView> {
                           username: video.username,
                           description: video.description,
                           songName: 'Original Audio',
+                          title: video.title ?? 'Untitled Video',
                         ),
                         if (video.aiMetadata != null &&
                             video.aiMetadata!['content_tags'] != null)

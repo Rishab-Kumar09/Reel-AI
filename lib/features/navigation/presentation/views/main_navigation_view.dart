@@ -6,6 +6,7 @@ import 'package:flutter_firebase_app_new/features/discover/presentation/views/di
 import 'package:flutter_firebase_app_new/features/create/presentation/views/create_view.dart';
 import 'package:flutter_firebase_app_new/features/profile/presentation/views/profile_view.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
+import 'package:flutter_firebase_app_new/features/create/presentation/widgets/video_metadata_form.dart';
 
 class MainNavigationView extends StatefulWidget {
   const MainNavigationView({super.key});
@@ -94,26 +95,7 @@ class _MainNavigationViewState extends State<MainNavigationView> {
               ),
               onTap: () async {
                 Get.back();
-                try {
-                  final sampleDataService = SampleDataService();
-                  await sampleDataService.uploadVideoFromDevice();
-                  Get.snackbar(
-                    'Success',
-                    'Video uploaded successfully',
-                    snackPosition: SnackPosition.BOTTOM,
-                    backgroundColor: Colors.green.withOpacity(0.1),
-                    colorText: Colors.green,
-                  );
-                } catch (e) {
-                  print('Error uploading video: $e');
-                  Get.snackbar(
-                    'Error',
-                    e.toString(),
-                    snackPosition: SnackPosition.BOTTOM,
-                    backgroundColor: Colors.red.withOpacity(0.1),
-                    colorText: Colors.red,
-                  );
-                }
+                _showVideoMetadataForm(isUpload: true);
               },
             ),
             ListTile(
@@ -140,6 +122,90 @@ class _MainNavigationViewState extends State<MainNavigationView> {
               },
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showVideoMetadataForm({bool isUpload = true}) {
+    bool isLoading = false;
+    double uploadProgress = 0.0;
+
+    Get.dialog(
+      Dialog(
+        child: StatefulBuilder(
+          builder: (context, setState) {
+            return Stack(
+              children: [
+                VideoMetadataForm(
+                  isLoading: isLoading,
+                  onSubmit: (metadata) async {
+                    setState(() {
+                      isLoading = true;
+                      uploadProgress = 0.0;
+                    });
+
+                    try {
+                      final sampleDataService = SampleDataService();
+                      if (isUpload) {
+                        await sampleDataService.uploadVideoFromDevice(
+                          metadata: metadata,
+                          onProgress: (progress) {
+                            setState(() {
+                              uploadProgress = progress;
+                            });
+                          },
+                        );
+                      }
+                      Get.back(); // Close the dialog
+                      Get.snackbar(
+                        'Success',
+                        'Video uploaded successfully',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.green.withOpacity(0.1),
+                        colorText: Colors.green,
+                      );
+                    } catch (e) {
+                      print('Error uploading video: $e');
+                      Get.snackbar(
+                        'Error',
+                        e.toString(),
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor: Colors.red.withOpacity(0.1),
+                        colorText: Colors.red,
+                      );
+                    } finally {
+                      setState(() {
+                        isLoading = false;
+                      });
+                    }
+                  },
+                ),
+                if (isLoading && uploadProgress > 0)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black54,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(
+                            value: uploadProgress,
+                            color: AppTheme.primaryColor,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Uploading video... ${(uploadProgress * 100).toInt()}%',
+                            style: AppTheme.bodyLarge.copyWith(
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
