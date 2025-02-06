@@ -4,18 +4,20 @@ import 'package:video_player/video_player.dart';
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
   final bool isVertical;
+  final Function(bool) onMuteStateChanged;
 
   const VideoPlayerItem({
     Key? key,
     required this.videoUrl,
+    required this.onMuteStateChanged,
     this.isVertical = false,
   }) : super(key: key);
 
   @override
-  State<VideoPlayerItem> createState() => _VideoPlayerItemState();
+  State<VideoPlayerItem> createState() => VideoPlayerItemState();
 }
 
-class _VideoPlayerItemState extends State<VideoPlayerItem> {
+class VideoPlayerItemState extends State<VideoPlayerItem> {
   late VideoPlayerController _videoPlayerController;
   bool _isPlaying = true;
   bool _isInitialized = false;
@@ -67,10 +69,11 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
     });
   }
 
-  void _toggleMute() {
+  void toggleMute() {
     setState(() {
       _isMuted = !_isMuted;
       _videoPlayerController.setVolume(_isMuted ? 0 : 1);
+      widget.onMuteStateChanged(_isMuted);
     });
   }
 
@@ -144,20 +147,6 @@ class _VideoPlayerItemState extends State<VideoPlayerItem> {
               ),
             ),
           ),
-
-        // Volume control button
-        Positioned(
-          right: 8,
-          bottom: 220,
-          child: IconButton(
-            onPressed: _toggleMute,
-            icon: Icon(
-              _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-              color: Colors.white,
-              size: 32,
-            ),
-          ),
-        ),
       ],
     );
   }

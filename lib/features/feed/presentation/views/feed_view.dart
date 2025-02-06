@@ -8,6 +8,7 @@ import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/vide
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/video_description.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 class FeedView extends StatefulWidget {
   const FeedView({super.key});
@@ -20,10 +21,20 @@ class _FeedViewState extends State<FeedView> {
   final FeedController _feedController = Get.put(FeedController());
   final PageController _pageController = PageController();
   final SampleDataService _sampleDataService = SampleDataService();
+  final RxBool _isMuted = false.obs;
+  final Map<int, GlobalKey<VideoPlayerItemState>> _videoPlayerKeys = {};
+
+  GlobalKey<VideoPlayerItemState> _getPlayerKey(int index) {
+    if (!_videoPlayerKeys.containsKey(index)) {
+      _videoPlayerKeys[index] = GlobalKey<VideoPlayerItemState>();
+    }
+    return _videoPlayerKeys[index]!;
+  }
 
   @override
   void dispose() {
     _pageController.dispose();
+    _videoPlayerKeys.clear();
     super.dispose();
   }
 
@@ -167,31 +178,47 @@ class _FeedViewState extends State<FeedView> {
                 children: [
                   // Video Player
                   VideoPlayerItem(
+                    key: _getPlayerKey(index),
                     videoUrl: video.videoUrl,
                     isVertical: video.isVertical ?? false,
+                    onMuteStateChanged: (isMuted) => _isMuted.value = isMuted,
                   ),
 
-                  // Video Actions
+                  // Combined Video Controls and Actions
                   Positioned(
                     right: 16,
                     bottom: 100,
-                    child: VideoActions(
-                      onLike: () => _feedController.likeVideo(video.id),
-                      onComment: () {
-                        // TODO: Implement comment functionality
-                        Get.toNamed('/comments', arguments: video.id);
-                      },
-                      onShare: () => _feedController.shareVideo(video.id),
-                      likes: '${video.likes}',
-                      comments: '${video.comments}',
-                      shares: '${video.shares}',
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Obx(() => VideoActions(
+                              onLike: () => _feedController.likeVideo(video.id),
+                              onComment: () {
+                                Get.toNamed('/comments', arguments: video.id);
+                              },
+                              onShare: () =>
+                                  _feedController.shareVideo(video.id),
+                              onMuteToggle: () {
+                                final playerState =
+                                    _getPlayerKey(index).currentState;
+                                if (playerState != null) {
+                                  playerState.toggleMute();
+                                }
+                              },
+                              likes: '${video.likes}',
+                              comments: '${video.comments}',
+                              shares: '${video.shares}',
+                              isMuted: _isMuted.value,
+                            )),
+                      ],
                     ),
                   ),
 
-                  // Video Description
+                  // Video Description (moved slightly higher to avoid overlap)
                   Positioned(
                     left: 16,
-                    right: 72,
+                    right:
+                        88, // Increased to give more space for right-side buttons
                     bottom: 24,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
