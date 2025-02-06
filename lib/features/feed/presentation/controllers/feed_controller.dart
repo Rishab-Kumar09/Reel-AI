@@ -21,6 +21,7 @@ class FeedController extends GetxController {
     'education',
     'cooking',
     'art',
+    'fun',
   ];
 
   // Pagination

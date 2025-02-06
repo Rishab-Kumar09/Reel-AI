@@ -21,5 +21,6 @@ class AppConstants {
     'education',
     'cooking',
     'art',
+    'fun',
   ];
 }
