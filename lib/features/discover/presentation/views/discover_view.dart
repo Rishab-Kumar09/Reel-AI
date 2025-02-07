@@ -75,7 +75,7 @@ class DiscoverView extends StatelessWidget {
               child: RefreshIndicator(
                 onRefresh: () async {
                   await Future.wait([
-                    controller.loadVideos(),
+                    controller.loadMoreVideos(refresh: true),
                     controller.loadTrendingVideos(),
                   ]);
                 },
@@ -266,6 +266,7 @@ class DiscoverView extends StatelessWidget {
   }
 
   Widget _buildVideoInfo(VideoModel video, {bool showLikes = false}) {
+    final controller = Get.find<DiscoverController>();
     return Positioned(
       left: 8,
       right: 8,
@@ -292,16 +293,27 @@ class DiscoverView extends StatelessWidget {
                 ),
               ),
               if (showLikes) ...[
-                const Icon(
-                  Icons.favorite,
-                  color: Colors.red,
-                  size: 16,
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  '${video.likes}',
-                  style: AppTheme.bodySmall.copyWith(color: Colors.white70),
-                ),
+                Obx(() {
+                  final isLiked = controller.isVideoLiked(video.id);
+                  return GestureDetector(
+                    onTap: () => controller.toggleLike(video.id),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.favorite,
+                          color: isLiked ? Colors.red : Colors.white70,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${video.likes}',
+                          style: AppTheme.bodySmall
+                              .copyWith(color: Colors.white70),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
               ],
             ],
           ),

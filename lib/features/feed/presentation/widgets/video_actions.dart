@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 
-class VideoActions extends StatelessWidget {
+class VideoActions extends StatefulWidget {
   final VoidCallback onLike;
   final VoidCallback onComment;
   final VoidCallback onShare;
@@ -10,6 +10,7 @@ class VideoActions extends StatelessWidget {
   final String comments;
   final String shares;
   final bool isMuted;
+  final bool isLiked;
 
   const VideoActions({
     super.key,
@@ -21,7 +22,47 @@ class VideoActions extends StatelessWidget {
     required this.comments,
     required this.shares,
     required this.isMuted,
+    required this.isLiked,
   });
+
+  @override
+  State<VideoActions> createState() => _VideoActionsState();
+}
+
+class _VideoActionsState extends State<VideoActions>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _handleLike() {
+    if (!widget.isLiked) {
+      _animationController.forward().then((_) {
+        _animationController.reverse();
+      });
+    }
+    widget.onLike();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -29,27 +70,33 @@ class VideoActions extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildActionButton(
-          icon: isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-          label: isMuted ? 'Unmute' : 'Mute',
-          onTap: onMuteToggle,
+          icon: widget.isMuted
+              ? Icons.volume_off_rounded
+              : Icons.volume_up_rounded,
+          label: widget.isMuted ? 'Unmute' : 'Mute',
+          onTap: widget.onMuteToggle,
         ),
         const SizedBox(height: 20),
-        _buildActionButton(
-          icon: Icons.favorite,
-          label: likes,
-          onTap: onLike,
+        ScaleTransition(
+          scale: _scaleAnimation,
+          child: _buildActionButton(
+            icon: Icons.favorite,
+            label: widget.likes,
+            onTap: _handleLike,
+            color: widget.isLiked ? Colors.red : AppTheme.textPrimaryColor,
+          ),
         ),
         const SizedBox(height: 20),
         _buildActionButton(
           icon: Icons.comment,
-          label: comments,
-          onTap: onComment,
+          label: widget.comments,
+          onTap: widget.onComment,
         ),
         const SizedBox(height: 20),
         _buildActionButton(
           icon: Icons.share,
-          label: shares,
-          onTap: onShare,
+          label: widget.shares,
+          onTap: widget.onShare,
         ),
       ],
     );
@@ -59,6 +106,7 @@ class VideoActions extends StatelessWidget {
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    Color? color,
   }) {
     return Column(
       children: [
@@ -73,7 +121,7 @@ class VideoActions extends StatelessWidget {
             onPressed: onTap,
             icon: Icon(
               icon,
-              color: AppTheme.textPrimaryColor,
+              color: color ?? AppTheme.textPrimaryColor,
               size: 28,
             ),
           ),

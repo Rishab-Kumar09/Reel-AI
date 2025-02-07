@@ -67,10 +67,13 @@ class ProfileController extends GetxController {
 
       print('Found ${likesSnapshot.docs.length} likes');
 
-      // Get the video IDs from likes
-      final videoIds = likesSnapshot.docs
-          .map((doc) => doc.get('videoId') as String)
-          .toList();
+      // Get the video IDs from likes, sorted by createdAt
+      final sortedLikes = likesSnapshot.docs.toList()
+        ..sort((a, b) => (b.get('createdAt') as Timestamp)
+            .compareTo(a.get('createdAt') as Timestamp));
+
+      final videoIds =
+          sortedLikes.map((doc) => doc.get('videoId') as String).toList();
 
       print('Video IDs from likes: $videoIds');
 
@@ -87,9 +90,17 @@ class ProfileController extends GetxController {
 
       print('Found ${videosSnapshot.docs.length} liked videos');
 
-      likedVideos.value = videosSnapshot.docs
-          .map((doc) => VideoModel.fromFirestore(doc))
+      // Create a map of videos for ordering based on likes order
+      final videosMap = Map.fromEntries(
+          videosSnapshot.docs.map((doc) => MapEntry(doc.id, doc)));
+
+      // Order videos based on the sorted likes order
+      final orderedVideos = videoIds
+          .where((id) => videosMap.containsKey(id))
+          .map((id) => VideoModel.fromFirestore(videosMap[id]!))
           .toList();
+
+      likedVideos.value = orderedVideos;
 
       print('Loaded ${likedVideos.length} liked videos into the list');
     } catch (e, stackTrace) {

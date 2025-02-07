@@ -77,9 +77,15 @@ class _ProfileViewState extends State<ProfileView>
           );
         }
 
-        return AspectRatio(
-          aspectRatio: snapshot.data!.value.aspectRatio,
-          child: VideoPlayer(snapshot.data!),
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: snapshot.data!.value.size.width,
+              height: snapshot.data!.value.size.height,
+              child: VideoPlayer(snapshot.data!),
+            ),
+          ),
         );
       },
     );
@@ -181,7 +187,7 @@ class _ProfileViewState extends State<ProfileView>
                             Icon(
                               Icons.favorite,
                               size: 12,
-                              color: AppTheme.primaryColor,
+                              color: Colors.red,
                             ),
                             const SizedBox(width: 4),
                             Text(

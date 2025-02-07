@@ -7,6 +7,7 @@ import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/vide
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/video_description.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/views/comments_view.dart';
 import 'package:flutter_firebase_app_new/core/routes/app_routes.dart';
+import 'package:flutter_firebase_app_new/features/discover/presentation/controllers/discover_controller.dart';
 
 class VideoPlayerView extends StatefulWidget {
   const VideoPlayerView({super.key});
@@ -19,6 +20,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   late VideoModel video;
   final RxBool _isMuted = false.obs;
   final GlobalKey<VideoPlayerItemState> _playerKey = GlobalKey();
+  late final DiscoverController _discoverController;
 
   void _showComments() {
     Get.bottomSheet(
@@ -33,6 +35,8 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   void initState() {
     super.initState();
     video = Get.arguments as VideoModel;
+    // Initialize the DiscoverController if it doesn't exist
+    _discoverController = Get.put(DiscoverController());
   }
 
   @override
@@ -62,21 +66,22 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
           Positioned(
             right: 16,
             bottom: 100,
-            child: VideoActions(
-              onLike: () {}, // Implement like functionality
-              onComment: _showComments,
-              onShare: () {}, // Implement share functionality
-              onMuteToggle: () {
-                final playerState = _playerKey.currentState;
-                if (playerState != null) {
-                  playerState.toggleMute();
-                }
-              },
-              likes: '${video.likes}',
-              comments: '${video.comments}',
-              shares: '${video.shares}',
-              isMuted: _isMuted.value,
-            ),
+            child: Obx(() => VideoActions(
+                  onLike: () => _discoverController.likeVideo(video.id),
+                  onComment: _showComments,
+                  onShare: () => _discoverController.shareVideo(video.id),
+                  onMuteToggle: () {
+                    final playerState = _playerKey.currentState;
+                    if (playerState != null) {
+                      playerState.toggleMute();
+                    }
+                  },
+                  likes: '${video.likes}',
+                  comments: '${video.comments}',
+                  shares: '${video.shares}',
+                  isMuted: _isMuted.value,
+                  isLiked: _discoverController.isVideoLiked(video.id),
+                )),
           ),
 
           // Video Description

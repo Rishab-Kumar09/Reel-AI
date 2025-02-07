@@ -167,7 +167,9 @@ class _CommentsViewState extends State<CommentsView> {
                                         Icon(
                                           Icons.favorite_border,
                                           size: 16,
-                                          color: AppTheme.textSecondaryColor,
+                                          color: comment.likes > 0
+                                              ? Colors.red
+                                              : AppTheme.textSecondaryColor,
                                         ),
                                         const SizedBox(width: 4),
                                         Text(

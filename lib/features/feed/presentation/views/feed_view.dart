@@ -210,6 +210,7 @@ class _FeedViewState extends State<FeedView> {
                               comments: '${video.comments}',
                               shares: '${video.shares}',
                               isMuted: _isMuted.value,
+                              isLiked: _feedController.isVideoLiked(video.id),
                             )),
                       ],
                     ),
