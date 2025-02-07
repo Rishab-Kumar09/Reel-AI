@@ -8,8 +8,42 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
 
-class DiscoverView extends StatelessWidget {
+class DiscoverView extends StatefulWidget {
   const DiscoverView({super.key});
+
+  @override
+  State<DiscoverView> createState() => _DiscoverViewState();
+}
+
+class _DiscoverViewState extends State<DiscoverView> {
+  final Map<String, VideoPlayerController> _videoControllers = {};
+
+  @override
+  void dispose() {
+    for (var controller in _videoControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<VideoPlayerController?> _getVideoController(String videoUrl) async {
+    if (!_videoControllers.containsKey(videoUrl)) {
+      try {
+        final controller =
+            VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+        _videoControllers[videoUrl] = controller;
+        await controller.initialize();
+        // Seek to the first frame
+        await controller.seekTo(Duration.zero);
+        await controller.setVolume(0.0);
+        return controller;
+      } catch (e) {
+        print('Error initializing video controller for $videoUrl: $e');
+        return null;
+      }
+    }
+    return _videoControllers[videoUrl];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -234,17 +268,36 @@ class DiscoverView extends StatelessWidget {
   }
 
   Widget _buildVideoThumbnail(VideoModel video) {
-    return CachedNetworkImage(
-      imageUrl: video.thumbnailUrl,
-      fit: BoxFit.cover,
-      placeholder: (context, url) => Container(
-        color: Colors.grey[900],
-        child: const Center(child: CircularProgressIndicator()),
-      ),
-      errorWidget: (context, url, error) => Container(
-        color: Colors.grey[900],
-        child: const Icon(Icons.error),
-      ),
+    return FutureBuilder<VideoPlayerController?>(
+      future: _getVideoController(video.videoUrl),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+          return const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              size: 32,
+              color: AppTheme.primaryColor,
+            ),
+          );
+        }
+
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: snapshot.data!.value.size.width,
+              height: snapshot.data!.value.size.height,
+              child: VideoPlayer(snapshot.data!),
+            ),
+          ),
+        );
+      },
     );
   }
 
