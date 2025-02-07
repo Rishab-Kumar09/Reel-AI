@@ -8,10 +8,13 @@ import 'package:video_compress/video_compress.dart';
 import 'dart:async';
 import 'package:mime/mime.dart';
 import 'dart:typed_data';
+import 'package:get/get.dart';
+import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
 
 class SampleDataService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
+  final AuthController _authController = Get.find<AuthController>();
 
   Future<String> _uploadVideoToStorage(String videoUrl, String fileName) async {
     try {
@@ -66,6 +69,13 @@ class SampleDataService {
     try {
       print('Starting to add sample videos...');
 
+      // Get current user
+      final currentUser = _authController.user.value;
+      if (currentUser == null) {
+        throw 'No user logged in';
+      }
+      print('Adding videos for user: ${currentUser.id}');
+
       // First test if we can write to Firestore
       try {
         print('Testing Firestore write access...');
@@ -90,8 +100,8 @@ class SampleDataService {
       if (videoUrls.containsKey('vertical_video1.mp4')) {
         print('Adding Video 1...');
         await _addVideo(
-          userId: 'sample_creator_1',
-          username: '@creator_one',
+          userId: currentUser.id,
+          username: currentUser.name ?? currentUser.email,
           videoUrl: videoUrls['vertical_video1.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video1/300/500',
           title: 'Creative Content Creation Tips',
@@ -118,8 +128,8 @@ class SampleDataService {
       if (videoUrls.containsKey('vertical_video2.mp4')) {
         print('Adding Video 2...');
         await _addVideo(
-          userId: 'sample_creator_2',
-          username: '@creator_two',
+          userId: currentUser.id,
+          username: currentUser.name ?? currentUser.email,
           videoUrl: videoUrls['vertical_video2.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video2/300/500',
           title: 'Epic Adventure Moments',
@@ -146,8 +156,8 @@ class SampleDataService {
       if (videoUrls.containsKey('vertical_video3.mp4')) {
         print('Adding Video 3...');
         await _addVideo(
-          userId: 'sample_creator_3',
-          username: '@creator_three',
+          userId: currentUser.id,
+          username: currentUser.name ?? currentUser.email,
           videoUrl: videoUrls['vertical_video3.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video3/300/500',
           title: 'Essential Learning Skills Guide',
@@ -174,8 +184,8 @@ class SampleDataService {
       if (videoUrls.containsKey('vertical_video4.mp4')) {
         print('Adding Video 4...');
         await _addVideo(
-          userId: 'sample_creator_4',
-          username: '@creator_four',
+          userId: currentUser.id,
+          username: currentUser.name ?? currentUser.email,
           videoUrl: videoUrls['vertical_video4.mp4']!,
           thumbnailUrl: 'https://picsum.photos/seed/video4/300/500',
           title: 'Must-Know Life Hacks',
@@ -393,6 +403,12 @@ class SampleDataService {
     Function(double)? onProgress,
   }) async {
     try {
+      // Get current user
+      final currentUser = _authController.user.value;
+      if (currentUser == null) {
+        throw 'No user logged in';
+      }
+
       // Pick video file
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
@@ -447,8 +463,8 @@ class SampleDataService {
 
         // Add video metadata to Firestore
         await _addVideo(
-          userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
-          username: '@user_${DateTime.now().millisecondsSinceEpoch}',
+          userId: currentUser.id,
+          username: currentUser.name ?? currentUser.email,
           videoUrl: downloadUrl,
           thumbnailUrl:
               'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
@@ -482,6 +498,12 @@ class SampleDataService {
     Function(double)? onProgress,
   }) async {
     try {
+      // Get current user
+      final currentUser = _authController.user.value;
+      if (currentUser == null) {
+        throw 'No user logged in';
+      }
+
       // Generate a unique filename
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
       print('Uploading recorded video to Firebase Storage: $fileName');
@@ -509,8 +531,8 @@ class SampleDataService {
 
       // Add video metadata to Firestore
       await _addVideo(
-        userId: 'user_${DateTime.now().millisecondsSinceEpoch}',
-        username: '@user_${DateTime.now().millisecondsSinceEpoch}',
+        userId: currentUser.id,
+        username: currentUser.name ?? currentUser.email,
         videoUrl: downloadUrl,
         thumbnailUrl:
             'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',

@@ -8,7 +8,9 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId: kIsWeb ? '403328203757-0ha0if5qei80us7l4m5hl5vlu3av5eta.apps.googleusercontent.com' : null,
+    clientId: kIsWeb
+        ? '403328203757-0ha0if5qei80us7l4m5hl5vlu3av5eta.apps.googleusercontent.com'
+        : null,
     scopes: ['email', 'profile'],
   );
 
@@ -89,6 +91,10 @@ class AuthService {
         password: password,
       );
       print('Sign in successful');
+
+      // Ensure user document exists in Firestore
+      await _createUserDocument(credential.user!);
+
       return credential;
     } catch (e) {
       print('Error signing in with email: $e');
@@ -103,10 +109,10 @@ class AuthService {
         email: email,
         password: password,
       );
-      
+
       // Create user document in Firestore
       await _createUserDocument(credential.user!);
-      
+
       return credential;
     } catch (e) {
       rethrow;
@@ -121,17 +127,18 @@ class AuthService {
         GoogleAuthProvider googleProvider = GoogleAuthProvider();
         googleProvider.addScope('email');
         googleProvider.addScope('profile');
-        
+
         return await _auth.signInWithPopup(googleProvider);
       } else {
         // For mobile, use GoogleSignIn
         final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-        
+
         if (googleUser == null) {
           throw 'Sign in aborted by user';
         }
 
-        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        final GoogleSignInAuthentication googleAuth =
+            await googleUser.authentication;
         final credential = GoogleAuthProvider.credential(
           accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
@@ -139,7 +146,7 @@ class AuthService {
 
         final userCredential = await _auth.signInWithCredential(credential);
         await _createUserDocument(userCredential.user!);
-        
+
         return userCredential;
       }
     } catch (e) {
@@ -193,10 +200,8 @@ class AuthService {
     try {
       if (currentUser == null) return null;
 
-      final userDoc = await _firestore
-          .collection('users')
-          .doc(currentUser!.uid)
-          .get();
+      final userDoc =
+          await _firestore.collection('users').doc(currentUser!.uid).get();
 
       if (userDoc.exists) {
         return UserModel.fromFirestore(userDoc);
@@ -218,4 +223,4 @@ class AuthService {
       rethrow;
     }
   }
-} 
+}

@@ -7,7 +7,7 @@ import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 
 class AuthController extends GetxController {
   final AuthService _authService = AuthService();
-  
+
   final Rx<User?> firebaseUser = Rx<User?>(null);
   final Rx<UserModel?> user = Rx<UserModel?>(null);
   final RxBool isLoading = false.obs;
@@ -18,7 +18,7 @@ class AuthController extends GetxController {
     super.onInit();
     // Initialize with current user if any
     firebaseUser.value = _authService.currentUser;
-    
+
     // Listen to auth state changes
     ever(firebaseUser, _handleAuthChanged);
     firebaseUser.bindStream(_authService.authStateChanges);
@@ -31,14 +31,16 @@ class AuthController extends GetxController {
     if (!isInitialized.value) return;
 
     if (user == null) {
+      this.user.value = null; // Clear the user data
       // Only navigate to login if we're not already there
       if (Get.currentRoute != Routes.login) {
         Get.offAllNamed(Routes.login);
       }
     } else {
+      // Load user data first
       await _loadUserData();
       // Only navigate to feed if we're not already there
-      if (Get.currentRoute != Routes.feed) {
+      if (Get.currentRoute == Routes.login) {
         Get.offAllNamed(Routes.feed);
       }
     }
@@ -46,6 +48,7 @@ class AuthController extends GetxController {
 
   Future<void> _loadUserData() async {
     try {
+      isLoading.value = true;
       user.value = await _authService.getUserData();
     } catch (e) {
       Get.snackbar(
@@ -55,6 +58,8 @@ class AuthController extends GetxController {
         backgroundColor: AppTheme.errorColor.withOpacity(0.1),
         colorText: AppTheme.errorColor,
       );
+    } finally {
+      isLoading.value = false;
     }
   }
 
@@ -79,9 +84,10 @@ class AuthController extends GetxController {
   Future<void> signInWithEmail(String email, String password) async {
     try {
       isLoading.value = true;
-      
+
       // Check if this is the test account
-      if (email == AuthService.testEmail && password == AuthService.testPassword) {
+      if (email == AuthService.testEmail &&
+          password == AuthService.testPassword) {
         // First try to create the account
         try {
           await _authService.signUpWithEmail(email, password);
@@ -220,4 +226,4 @@ class AuthController extends GetxController {
       isLoading.value = false;
     }
   }
-} 
+}
