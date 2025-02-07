@@ -5,6 +5,8 @@ import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/video_player_item.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/video_actions.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/video_description.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/views/comments_view.dart';
+import 'package:flutter_firebase_app_new/core/routes/app_routes.dart';
 
 class VideoPlayerView extends StatefulWidget {
   const VideoPlayerView({super.key});
@@ -17,6 +19,15 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   late VideoModel video;
   final RxBool _isMuted = false.obs;
   final GlobalKey<VideoPlayerItemState> _playerKey = GlobalKey();
+
+  void _showComments() {
+    Get.bottomSheet(
+      CommentsView(videoId: video.id),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: true,
+    );
+  }
 
   @override
   void initState() {
@@ -53,9 +64,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
             bottom: 100,
             child: VideoActions(
               onLike: () {}, // Implement like functionality
-              onComment: () {
-                Get.toNamed('/comments', arguments: video.id);
-              },
+              onComment: _showComments,
               onShare: () {}, // Implement share functionality
               onMuteToggle: () {
                 final playerState = _playerKey.currentState;

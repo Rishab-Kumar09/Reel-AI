@@ -2,14 +2,15 @@ import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/models/comment_model.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class CommentsController extends GetxController {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final AuthController _authController = Get.find<AuthController>();
-
+  String videoId;
+  final uid = FirebaseAuth.instance.currentUser!.uid;
   final RxList<CommentModel> comments = <CommentModel>[].obs;
   final RxBool isLoading = false.obs;
-  final String videoId;
 
   CommentsController({required this.videoId});
 
@@ -21,6 +22,7 @@ class CommentsController extends GetxController {
 
   Future<void> loadComments() async {
     try {
+      print('Loading comments for video: $videoId');
       isLoading.value = true;
       final querySnapshot = await _firestore
           .collection('comments')
@@ -28,17 +30,27 @@ class CommentsController extends GetxController {
           .orderBy('createdAt', descending: true)
           .get();
 
+      print('Found ${querySnapshot.docs.length} comments');
+
+      // Print each comment document for debugging
+      querySnapshot.docs.forEach((doc) {
+        print('Comment doc: ${doc.data()}');
+      });
+
       comments.value = querySnapshot.docs
           .map((doc) => CommentModel.fromFirestore(doc))
           .toList();
+
+      print('Loaded ${comments.length} comments into the list');
 
       // Update video comment count
       final videoRef = _firestore.collection('videos').doc(videoId);
       await videoRef.update({
         'comments': comments.length,
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error loading comments: $e');
+      print('Stack trace: $stackTrace');
     } finally {
       isLoading.value = false;
     }

@@ -9,6 +9,9 @@ import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/vide
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/views/comments_view.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/controllers/comments_controller.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
 
 class FeedView extends StatefulWidget {
   const FeedView({super.key});
@@ -193,9 +196,7 @@ class _FeedViewState extends State<FeedView> {
                       children: [
                         Obx(() => VideoActions(
                               onLike: () => _feedController.likeVideo(video.id),
-                              onComment: () {
-                                Get.toNamed('/comments', arguments: video.id);
-                              },
+                              onComment: () => _showComments(video),
                               onShare: () =>
                                   _feedController.shareVideo(video.id),
                               onMuteToggle: () {
@@ -257,6 +258,15 @@ class _FeedViewState extends State<FeedView> {
           },
         );
       }),
+    );
+  }
+
+  void _showComments(VideoModel video) {
+    Get.bottomSheet(
+      CommentsView(videoId: video.id),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      enableDrag: true,
     );
   }
 }

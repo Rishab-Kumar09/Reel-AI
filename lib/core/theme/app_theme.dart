@@ -126,4 +126,4 @@ class AppTheme {
       bodySmall: bodySmall.copyWith(color: Colors.white70),
     ),
   );
-} 
+}

@@ -75,6 +75,7 @@ dependencies:
 
   # Added from the code block
   timeago: ^3.6.0
+  share_plus: ^10.1.4
 
 dev_dependencies:
   flutter_test:
