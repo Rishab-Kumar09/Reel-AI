@@ -21,6 +21,24 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
   final RxBool _isMuted = false.obs;
   final GlobalKey<VideoPlayerItemState> _playerKey = GlobalKey();
   late final DiscoverController _discoverController;
+  final RxBool _isRetrying = false.obs;
+
+  @override
+  void initState() {
+    super.initState();
+    video = Get.arguments as VideoModel;
+    _discoverController = Get.put(DiscoverController());
+  }
+
+  @override
+  void dispose() {
+    // Ensure video player is disposed
+    final playerState = _playerKey.currentState;
+    if (playerState != null) {
+      playerState.dispose();
+    }
+    super.dispose();
+  }
 
   void _showComments() {
     Get.bottomSheet(
@@ -31,72 +49,110 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
     );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    video = Get.arguments as VideoModel;
-    // Initialize the DiscoverController if it doesn't exist
-    _discoverController = Get.put(DiscoverController());
+  Future<void> _retryPlayback() async {
+    _isRetrying.value = true;
+
+    // Properly dispose of the current player
+    final playerState = _playerKey.currentState;
+    if (playerState != null) {
+      playerState.dispose();
+    }
+
+    // Wait a bit before recreating
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    if (mounted) {
+      setState(() {
+        _isRetrying.value = false;
+      });
+    }
+  }
+
+  void _handleBack() {
+    // Ensure cleanup before navigation
+    final playerState = _playerKey.currentState;
+    if (playerState != null) {
+      playerState.dispose();
+    }
+    Get.back();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Get.back(),
-        ),
-      ),
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          // Video Player
-          VideoPlayerItem(
-            key: _playerKey,
-            videoUrl: video.videoUrl,
-            isVertical: video.isVertical ?? false,
-            onMuteStateChanged: (isMuted) => _isMuted.value = isMuted,
+    return WillPopScope(
+      onWillPop: () async {
+        _handleBack();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: _handleBack,
           ),
-
-          // Video Actions
-          Positioned(
-            right: 16,
-            bottom: 100,
-            child: Obx(() => VideoActions(
-                  onLike: () => _discoverController.likeVideo(video.id),
-                  onComment: _showComments,
-                  onShare: () => _discoverController.shareVideo(video.id),
-                  onMuteToggle: () {
-                    final playerState = _playerKey.currentState;
-                    if (playerState != null) {
-                      playerState.toggleMute();
-                    }
-                  },
-                  likes: '${video.likes}',
-                  comments: '${video.comments}',
-                  shares: '${video.shares}',
-                  isMuted: _isMuted.value,
-                  isLiked: _discoverController.isVideoLiked(video.id),
-                )),
-          ),
-
-          // Video Description
-          Positioned(
-            left: 16,
-            right: 88,
-            bottom: 24,
-            child: VideoDescription(
-              username: video.username,
-              description: video.description,
-              songName: 'Original Audio',
-              title: video.title,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: _retryPlayback,
             ),
-          ),
-        ],
+          ],
+        ),
+        body: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Video Player
+            Obx(() => _isRetrying.value
+                ? const Center(
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                    ),
+                  )
+                : VideoPlayerItem(
+                    key: _playerKey,
+                    videoUrl: video.videoUrl,
+                    isVertical: video.isVertical ?? false,
+                    onMuteStateChanged: (isMuted) => _isMuted.value = isMuted,
+                  )),
+
+            // Video Actions
+            Positioned(
+              right: 16,
+              bottom: 100,
+              child: Obx(() => VideoActions(
+                    onLike: () => _discoverController.likeVideo(video.id),
+                    onComment: _showComments,
+                    onShare: () => _discoverController.shareVideo(video.id),
+                    onMuteToggle: () {
+                      final playerState = _playerKey.currentState;
+                      if (playerState != null) {
+                        playerState.toggleMute();
+                      }
+                    },
+                    likes: '${video.likes}',
+                    comments: '${video.comments}',
+                    shares: '${video.shares}',
+                    isMuted: _isMuted.value,
+                    isLiked: _discoverController.isVideoLiked(video.id),
+                  )),
+            ),
+
+            // Video Description
+            Positioned(
+              left: 16,
+              right: 88,
+              bottom: 24,
+              child: VideoDescription(
+                username: video.username,
+                description: video.description,
+                songName: 'Original Audio',
+                title: video.title,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
