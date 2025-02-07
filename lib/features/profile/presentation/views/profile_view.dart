@@ -6,6 +6,8 @@ import 'package:flutter_firebase_app_new/features/profile/presentation/controlle
 import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
+import 'package:video_player/video_player.dart';
+import 'package:flutter_firebase_app_new/core/routes/app_routes.dart';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -19,6 +21,7 @@ class _ProfileViewState extends State<ProfileView>
   final _authController = Get.find<AuthController>();
   final _profileController = Get.put(ProfileController());
   late TabController _tabController;
+  final Map<String, VideoPlayerController> _videoControllers = {};
 
   @override
   void initState() {
@@ -29,21 +32,57 @@ class _ProfileViewState extends State<ProfileView>
   @override
   void dispose() {
     _tabController.dispose();
+    for (var controller in _videoControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _handleLogout() async {
-    try {
-      await _authController.signOut();
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to logout: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.1),
-        colorText: Colors.red,
-      );
+  Future<VideoPlayerController?> _getVideoController(String videoUrl) async {
+    if (!_videoControllers.containsKey(videoUrl)) {
+      try {
+        final controller =
+            VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+        _videoControllers[videoUrl] = controller;
+        await controller.initialize();
+        // Seek to the first frame
+        await controller.seekTo(Duration.zero);
+        await controller.setVolume(0.0);
+        return controller;
+      } catch (e) {
+        print('Error initializing video controller for $videoUrl: $e');
+        return null;
+      }
     }
+    return _videoControllers[videoUrl];
+  }
+
+  Widget _buildVideoThumbnail(VideoModel video) {
+    return FutureBuilder<VideoPlayerController?>(
+      future: _getVideoController(video.videoUrl),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+          return const Center(
+            child: Icon(
+              Icons.play_circle_outline,
+              size: 32,
+              color: AppTheme.primaryColor,
+            ),
+          );
+        }
+
+        return AspectRatio(
+          aspectRatio: snapshot.data!.value.aspectRatio,
+          child: VideoPlayer(snapshot.data!),
+        );
+      },
+    );
   }
 
   Widget _buildVideoGrid(List<VideoModel> videos) {
@@ -88,49 +127,95 @@ class _ProfileViewState extends State<ProfileView>
           final video = videos[index];
           return GestureDetector(
             onTap: () {
-              // TODO: Navigate to video detail/player
-              Get.toNamed('/video-player', arguments: video);
+              Get.toNamed(Routes.videoPlayer, arguments: video);
             },
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
-                image: DecorationImage(
-                  image: CachedNetworkImageProvider(video.thumbnailUrl),
-                  fit: BoxFit.cover,
-                ),
+                color: AppTheme.surfaceColor,
               ),
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.transparent,
-                      Colors.black.withOpacity(0.5),
-                    ],
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Video thumbnail
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: _buildVideoThumbnail(video),
                   ),
-                ),
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      video.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.bodySmall.copyWith(
-                        color: Colors.white,
+                  // Play icon overlay
+                  const Center(
+                    child: Icon(
+                      Icons.play_circle_outline,
+                      size: 32,
+                      color: Colors.white,
+                    ),
+                  ),
+                  // Video info overlay
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.7),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                    padding: const EdgeInsets.all(8),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          video.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTheme.bodySmall.copyWith(
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.favorite,
+                              size: 12,
+                              color: AppTheme.primaryColor,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${video.likes}',
+                              style: AppTheme.bodySmall.copyWith(
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           );
         },
       ),
     );
+  }
+
+  Future<void> _handleLogout() async {
+    try {
+      await _authController.signOut();
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to logout: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.1),
+        colorText: Colors.red,
+      );
+    }
   }
 
   @override

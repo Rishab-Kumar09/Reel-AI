@@ -55,14 +55,14 @@ class ProfileController extends GetxController {
   Future<void> loadLikedVideos() async {
     try {
       isLoading.value = true;
-      final userEmail = _authController.firebaseUser.value?.email;
-      print('Loading liked videos for user email: $userEmail');
-      if (userEmail == null) return;
+      final userId = _authController.user.value?.id;
+      print('Loading liked videos for user ID: $userId');
+      if (userId == null) return;
 
       // First get all likes by the user
       final likesSnapshot = await _firestore
           .collection('likes')
-          .where('username', isEqualTo: userEmail)
+          .where('userId', isEqualTo: userId)
           .get();
 
       print('Found ${likesSnapshot.docs.length} likes');
