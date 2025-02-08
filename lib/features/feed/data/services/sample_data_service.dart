@@ -504,11 +504,17 @@ class SampleDataService {
         throw 'No user logged in';
       }
 
+      onProgress?.call(0.1);
+
       // Generate a unique filename
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
       print('Uploading recorded video to Firebase Storage: $fileName');
 
+      onProgress?.call(0.2);
+
       final storageRef = _storage.ref().child('videos/$fileName');
+
+      onProgress?.call(0.3);
 
       // Upload the video file
       final uploadTask = storageRef.putFile(
@@ -518,16 +524,19 @@ class SampleDataService {
 
       // Listen to upload progress
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        final progress =
+            0.3 + (snapshot.bytesTransferred / snapshot.totalBytes * 0.5);
         onProgress?.call(progress);
       });
 
       // Wait for upload to complete
       await uploadTask;
+      onProgress?.call(0.8);
 
       // Get the download URL
       final downloadUrl = await storageRef.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
+      onProgress?.call(0.9);
 
       // Add video metadata to Firestore
       await _addVideo(
@@ -550,6 +559,7 @@ class SampleDataService {
           },
         },
       );
+      onProgress?.call(1.0);
     } catch (e) {
       print('Error uploading recorded video: $e');
       rethrow;

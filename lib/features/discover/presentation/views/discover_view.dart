@@ -75,7 +75,7 @@ class DiscoverView extends StatelessWidget {
               child: RefreshIndicator(
                 onRefresh: () async {
                   await Future.wait([
-                    controller.loadVideos(),
+                    controller.loadMoreVideos(refresh: true),
                     controller.loadTrendingVideos(),
                   ]);
                 },

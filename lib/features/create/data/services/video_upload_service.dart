@@ -9,7 +9,7 @@ import 'dart:convert';
 class VideoUploadService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
+
   // OpenShot API configuration
   static const String _openShotApiUrl = 'YOUR_OPENSHOT_API_URL';
   static const String _openShotApiKey = 'YOUR_OPENSHOT_API_KEY';
@@ -34,17 +34,20 @@ class VideoUploadService {
       if (mediaInfo == null) throw Exception('Video compression failed');
 
       // 2. Generate thumbnail
-      final thumbnailFile = await VideoCompress.getFileThumbnail(videoFile.path);
-      
+      final thumbnailFile =
+          await VideoCompress.getFileThumbnail(videoFile.path);
+
       // 3. Upload compressed video to Firebase Storage
-      final videoFileName = '${DateTime.now().millisecondsSinceEpoch}_${path.basename(videoFile.path)}';
+      final videoFileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${path.basename(videoFile.path)}';
       final videoRef = _storage.ref().child('videos/$videoFileName');
       final uploadTask = await videoRef.putFile(File(mediaInfo.path!));
       final videoUrl = await uploadTask.ref.getDownloadURL();
 
       // 4. Upload thumbnail
       final thumbnailFileName = 'thumb_$videoFileName';
-      final thumbnailRef = _storage.ref().child('thumbnails/$thumbnailFileName');
+      final thumbnailRef =
+          _storage.ref().child('thumbnails/$thumbnailFileName');
       await thumbnailRef.putFile(thumbnailFile);
       final thumbnailUrl = await thumbnailRef.getDownloadURL();
 
@@ -103,7 +106,7 @@ class VideoUploadService {
 
       final uploadResponse = await uploadRequest.send();
       final uploadResult = await http.Response.fromStream(uploadResponse);
-      
+
       if (uploadResponse.statusCode != 200) {
         throw Exception('Failed to upload video to OpenShot API');
       }
@@ -146,4 +149,4 @@ class VideoUploadService {
       return {};
     }
   }
-} 
+}

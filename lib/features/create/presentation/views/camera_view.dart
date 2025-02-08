@@ -137,21 +137,27 @@ class _CameraViewState extends State<CameraView> {
       });
 
       // Show metadata form
+      bool isLoading = false;
+      final uploadProgress = ValueNotifier<double>(0.0);
+
       Get.dialog(
         Dialog(
           child: StatefulBuilder(
             builder: (context, setState) {
-              bool isLoading = false;
-              double uploadProgress = 0.0;
+              print(
+                  '🎯 Builder called. isLoading: $isLoading, progress: ${uploadProgress.value}');
               return Stack(
                 children: [
                   VideoMetadataForm(
                     isLoading: isLoading,
                     onSubmit: (metadata) async {
+                      print('🎯 Starting upload process...');
                       setState(() {
                         isLoading = true;
-                        uploadProgress = 0.0;
                       });
+                      uploadProgress.value = 0.0;
+                      print(
+                          '🎯 Set loading state: $isLoading, progress: ${uploadProgress.value}');
 
                       try {
                         final sampleDataService = SampleDataService();
@@ -159,11 +165,13 @@ class _CameraViewState extends State<CameraView> {
                           File(video.path),
                           metadata: metadata,
                           onProgress: (progress) {
-                            setState(() {
-                              uploadProgress = progress;
-                            });
+                            print('🎯 Progress callback: $progress');
+                            uploadProgress.value = progress;
+                            print(
+                                '🎯 Updated progress state: ${uploadProgress.value}');
                           },
                         );
+                        print('🎯 Upload completed successfully');
                         Get.back(); // Close the dialog
                         Get.back(); // Return to previous screen
                         Get.snackbar(
@@ -174,7 +182,7 @@ class _CameraViewState extends State<CameraView> {
                           colorText: Colors.green,
                         );
                       } catch (e) {
-                        print('Error uploading video: $e');
+                        print('❌ Error uploading video: $e');
                         Get.snackbar(
                           'Error',
                           e.toString(),
@@ -185,32 +193,44 @@ class _CameraViewState extends State<CameraView> {
                       } finally {
                         setState(() {
                           isLoading = false;
+                          print('🎯 Reset loading state: $isLoading');
                         });
                       }
                     },
                   ),
-                  if (isLoading && uploadProgress > 0)
-                    Positioned.fill(
-                      child: Container(
-                        color: Colors.black54,
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            CircularProgressIndicator(
-                              value: uploadProgress,
-                              color: AppTheme.primaryColor,
+                  ValueListenableBuilder<double>(
+                    valueListenable: uploadProgress,
+                    builder: (context, progress, child) {
+                      print(
+                          '🎯 Progress overlay builder. isLoading: $isLoading, progress: $progress');
+                      if (isLoading) {
+                        print('🎯 Showing progress bar overlay');
+                        return Positioned.fill(
+                          child: Container(
+                            color: Colors.black54,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                CircularProgressIndicator(
+                                  value: progress,
+                                  color: AppTheme.primaryColor,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Uploading video... ${(progress * 100).toInt()}%',
+                                  style: AppTheme.bodyLarge.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Uploading video... ${(uploadProgress * 100).toInt()}%',
-                              style: AppTheme.bodyLarge.copyWith(
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
+                          ),
+                        );
+                      }
+                      print('🎯 Progress bar hidden');
+                      return const SizedBox.shrink();
+                    },
+                  ),
                 ],
               );
             },

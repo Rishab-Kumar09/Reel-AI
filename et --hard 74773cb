@@ -1,0 +1,29 @@
+[33m74773cb[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{0}: reset: moving to 74773cb71af3c221eef34efd8cc39e2dafd9c1ac
+[33m74773cb[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{1}: reset: moving to 74773cb71af3c221eef34efd8cc39e2dafd9c1ac
+[33m3940b59[m[33m ([m[1;31morigin/main[m[33m)[m HEAD@{2}: commit: fix: improve video player and deletion functionality - Add proper cleanup, fix deletion process, improve error handling, better state management, URL token handling, batch operations, and retry mechanism
+[33m74773cb[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{3}: commit: Thhumbnails working in discover mode
+[33me16ef99[m HEAD@{4}: commit: working profile page implementation
+[33m0baf2dc[m HEAD@{5}: commit: Working on discover page
+[33me8761b0[m HEAD@{6}: commit: Share and like and comment buttons are working
+[33m1ff7907[m HEAD@{7}: commit: feat: Improved video player implementation with thumbnails and reusable components
+[33m8ef37b8[m HEAD@{8}: commit: Fix video loading in profile view and update user ID handling
+[33m7dc98f0[m HEAD@{9}: commit: Fix: Update video sizing to handle vertical videos properly without black bars
+[33meaeaa9f[m HEAD@{10}: commit: Fix: Implement functional mute toggle with consistent button styling
+[33m29dd7cd[m HEAD@{11}: commit: Update: Remove header gradient and add three-dots menu for category selection
+[33m81c57c0[m HEAD@{12}: reset: moving to origin/main
+[33mee1e8bd[m HEAD@{13}: commit: Update: Remove header gradient and add three-dots menu for category selection
+[33m2ee1d74[m HEAD@{14}: commit: Add 'fun' category
+[33m2148918[m HEAD@{15}: commit: Refactor: Remove difficulty level and add video title display
+[33m08436a7[m HEAD@{16}: commit: feat: Add logout functionality and improve profile view UI
+[33m3dc5a97[m HEAD@{17}: commit: Initial commit: Flutter video learning app with Firebase integration
+[33m3ddc5fd[m HEAD@{18}: commit: Initial commit: Flutter video learning app with Firebase integration
+[33m869f096[m HEAD@{19}: reset: moving to 869f0969b88e12482706f7155dbb2ef7ab37c254
+[33mc5a9d74[m HEAD@{20}: reset: moving to c5a9d74
+[33m869f096[m HEAD@{21}: reset: moving to HEAD
+[33m869f096[m HEAD@{22}: commit: No major improvements, just a quick save (upload button is working again)
+[33mc5a9d74[m HEAD@{23}: commit: Added video mute functionality, improved upload progress tracking, and fixed web upload issues
+[33m194a1c4[m HEAD@{24}: commit: Fix: Remove unused assets directory from pubspec.yaml
+[33m056a8a9[m HEAD@{25}: commit: Update: Improve Google Sign-In implementation for web platform
+[33m3814293[m HEAD@{26}: commit: Initial commit: Flutter Firebase App with Authentication
+[33m8de0212[m HEAD@{27}: Branch: renamed refs/heads/master to refs/heads/main
+[33m8de0212[m HEAD@{29}: commit (initial): Initial commit: Flutter Firebase app setup
