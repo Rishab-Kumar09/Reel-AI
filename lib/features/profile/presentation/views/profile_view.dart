@@ -77,9 +77,15 @@ class _ProfileViewState extends State<ProfileView>
           );
         }
 
-        return AspectRatio(
-          aspectRatio: snapshot.data!.value.aspectRatio,
-          child: VideoPlayer(snapshot.data!),
+        return SizedBox.expand(
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: snapshot.data!.value.size.width,
+              height: snapshot.data!.value.size.height,
+              child: VideoPlayer(snapshot.data!),
+            ),
+          ),
         );
       },
     );
@@ -181,7 +187,7 @@ class _ProfileViewState extends State<ProfileView>
                             Icon(
                               Icons.favorite,
                               size: 12,
-                              color: AppTheme.primaryColor,
+                              color: Colors.red,
                             ),
                             const SizedBox(width: 4),
                             Text(
@@ -195,6 +201,96 @@ class _ProfileViewState extends State<ProfileView>
                       ],
                     ),
                   ),
+                  // Add menu button for user's own videos
+                  if (video.userId == _authController.user.value?.id)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          popupMenuTheme: PopupMenuThemeData(
+                            color: AppTheme.surfaceColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                        child: PopupMenuButton<String>(
+                          icon: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Icon(
+                              Icons.more_vert,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          onSelected: (value) {
+                            if (value == 'delete') {
+                              Get.dialog(
+                                AlertDialog(
+                                  title: Text(
+                                    'Delete Video',
+                                    style: AppTheme.titleMedium,
+                                  ),
+                                  content: Text(
+                                    'Are you sure you want to delete this video? This action cannot be undone.',
+                                    style: AppTheme.bodyMedium,
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Get.back(),
+                                      child: Text(
+                                        'Cancel',
+                                        style: AppTheme.bodyMedium.copyWith(
+                                          color: AppTheme.textSecondaryColor,
+                                        ),
+                                      ),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        Get.back();
+                                        _profileController.deleteVideo(video);
+                                      },
+                                      child: Text(
+                                        'Delete',
+                                        style: AppTheme.bodyMedium.copyWith(
+                                          color: AppTheme.errorColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            PopupMenuItem<String>(
+                              value: 'delete',
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.delete_outline,
+                                    size: 20,
+                                    color: AppTheme.errorColor,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Delete Video',
+                                    style: AppTheme.bodyMedium.copyWith(
+                                      color: AppTheme.errorColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),

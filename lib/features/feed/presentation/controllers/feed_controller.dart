@@ -13,7 +13,9 @@ class FeedController extends GetxController {
   final RxList<VideoModel> videos = <VideoModel>[].obs;
   final RxBool isLoading = false.obs;
   final RxString selectedCategory = 'all'.obs;
+  final RxSet<String> likedVideoIds = <String>{}.obs;
   StreamSubscription<QuerySnapshot>? _videosSubscription;
+  StreamSubscription<QuerySnapshot>? _likesSubscription;
 
   // Available categories
   final List<String> categories = [
@@ -35,11 +37,13 @@ class FeedController extends GetxController {
   void onInit() {
     super.onInit();
     _setupVideoStream();
+    _setupLikesStream();
   }
 
   @override
   void onClose() {
     _videosSubscription?.cancel();
+    _likesSubscription?.cancel();
     super.onClose();
   }
 
@@ -74,6 +78,25 @@ class FeedController extends GetxController {
         print('Error in video stream: $error');
       },
     );
+  }
+
+  void _setupLikesStream() {
+    final userId = _authController.user.value?.id;
+    if (userId == null) return;
+
+    _likesSubscription = _firestore
+        .collection('likes')
+        .where('userId', isEqualTo: userId)
+        .snapshots()
+        .listen((snapshot) {
+      final likedIds =
+          snapshot.docs.map((doc) => doc.get('videoId') as String).toSet();
+      likedVideoIds.value = likedIds;
+    });
+  }
+
+  bool isVideoLiked(String videoId) {
+    return likedVideoIds.contains(videoId);
   }
 
   Future<void> loadVideos({bool refresh = false}) async {

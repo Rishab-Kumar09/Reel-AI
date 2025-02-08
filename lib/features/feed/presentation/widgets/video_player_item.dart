@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -31,21 +32,78 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     _initializeVideo();
   }
 
+  Future<String> _getValidVideoUrl() async {
+    try {
+      if (widget.videoUrl
+          .startsWith('https://firebasestorage.googleapis.com')) {
+        // Extract the path from the URL
+        final uri = Uri.parse(widget.videoUrl);
+        final path = uri.path.split('/o/')[1].split('?')[0];
+        final decodedPath = Uri.decodeComponent(path);
+
+        // Get a fresh URL with a new token
+        final ref = FirebaseStorage.instance.ref().child(decodedPath);
+        return await ref.getDownloadURL();
+      }
+      return widget.videoUrl;
+    } catch (e) {
+      print('Error getting valid video URL: $e');
+      throw 'Failed to get valid video URL';
+    }
+  }
+
+  void _handleVideoError() {
+    final error = _videoPlayerController.value.errorDescription;
+    if (error != null) {
+      print('Video player error: $error');
+      if (mounted) {
+        setState(() {
+          _error = 'Error playing video: $error';
+        });
+      }
+    }
+  }
+
   void _initializeVideo() async {
     try {
-      _videoPlayerController = VideoPlayerController.network(widget.videoUrl);
-      await _videoPlayerController.initialize();
+      print('Getting valid video URL...');
+      final validUrl = await _getValidVideoUrl();
+      print('Initializing video player for URL: $validUrl');
 
-      if (mounted) {
+      if (!mounted) return;
+
+      _videoPlayerController = VideoPlayerController.network(
+        validUrl,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      );
+
+      // Add listener for errors
+      _videoPlayerController.addListener(_handleVideoError);
+
+      // Initialize with error handling
+      if (!mounted) return;
+
+      await _videoPlayerController.initialize().catchError((error) {
+        print('Error initializing video: $error');
+        if (mounted) {
+          setState(() {
+            _error = 'Error loading video: $error';
+          });
+        }
+        return null;
+      });
+
+      if (!mounted) return;
+
+      if (_videoPlayerController.value.isInitialized) {
         setState(() {
           _isInitialized = true;
         });
+        _videoPlayerController.setLooping(true);
+        _videoPlayerController.play();
       }
-
-      _videoPlayerController.setLooping(true);
-      _videoPlayerController.play();
     } catch (e) {
-      print('Error initializing video ${widget.videoUrl}: $e');
+      print('Error in _initializeVideo: $e');
       if (mounted) {
         setState(() {
           _error = 'Error loading video: $e';
@@ -56,7 +114,16 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
 
   @override
   void dispose() {
-    _videoPlayerController.dispose();
+    print('Disposing video player');
+    try {
+      if (_videoPlayerController.value.isInitialized) {
+        _videoPlayerController.pause();
+      }
+      _videoPlayerController.removeListener(_handleVideoError);
+      _videoPlayerController.dispose();
+    } catch (e) {
+      print('Error disposing video player: $e');
+    }
     super.dispose();
   }
 
@@ -81,13 +148,24 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   Widget build(BuildContext context) {
     if (_error != null) {
       return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Text(
-            _error!,
-            style: const TextStyle(color: Colors.white),
-            textAlign: TextAlign.center,
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 48,
+            ),
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Text(
+                _error!,
+                style: const TextStyle(color: Colors.white),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ),
       );
     }
