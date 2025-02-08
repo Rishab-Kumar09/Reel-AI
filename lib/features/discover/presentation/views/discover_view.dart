@@ -113,106 +113,128 @@ class _DiscoverViewState extends State<DiscoverView> {
                     controller.loadTrendingVideos(),
                   ]);
                 },
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Trending Section
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          'Trending',
-                          style: AppTheme.headlineSmall,
+                child: NotificationListener<ScrollNotification>(
+                  onNotification: (ScrollNotification scrollInfo) {
+                    if (!controller.isLoading.value &&
+                        controller.hasMore.value &&
+                        scrollInfo.metrics.pixels >=
+                            scrollInfo.metrics.maxScrollExtent * 0.9) {
+                      controller.loadMoreVideos();
+                    }
+                    return true;
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Trending Section
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text(
+                            'Trending',
+                            style: AppTheme.headlineSmall,
+                          ),
                         ),
-                      ),
-                      SizedBox(
-                        height: 200,
-                        child: Obx(() {
-                          if (controller.isTrendingLoading.value) {
+                        SizedBox(
+                          height: 200,
+                          child: Obx(() {
+                            if (controller.isTrendingLoading.value) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
+
+                            if (controller.trendingVideos.isEmpty) {
+                              return const Center(
+                                child: Text('No trending videos'),
+                              );
+                            }
+
+                            return ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: controller.trendingVideos.length,
+                              itemBuilder: (context, index) {
+                                final video = controller.trendingVideos[index];
+                                return _buildTrendingVideoCard(video);
+                              },
+                            );
+                          }),
+                        ),
+
+                        // All Videos Grid
+                        Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'All Videos',
+                                style: AppTheme.headlineSmall,
+                              ),
+                              Obx(() {
+                                if (controller.selectedTags.isNotEmpty) {
+                                  return TextButton(
+                                    onPressed: controller.clearFilters,
+                                    child: const Text('Clear Filters'),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              }),
+                            ],
+                          ),
+                        ),
+                        Obx(() {
+                          if (controller.isLoading.value &&
+                              controller.videos.isEmpty) {
                             return const Center(
                                 child: CircularProgressIndicator());
                           }
 
-                          if (controller.trendingVideos.isEmpty) {
-                            return const Center(
-                              child: Text('No trending videos'),
+                          if (!controller.isLoading.value &&
+                              controller.videos.isEmpty) {
+                            return Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(32.0),
+                                child: Text(
+                                  'No videos found',
+                                  style: AppTheme.titleMedium,
+                                ),
+                              ),
                             );
                           }
 
-                          return ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: controller.trendingVideos.length,
-                            itemBuilder: (context, index) {
-                              final video = controller.trendingVideos[index];
-                              return _buildTrendingVideoCard(video);
-                            },
+                          return Column(
+                            children: [
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                padding: const EdgeInsets.all(8),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 0.8,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemCount: controller.videos.length,
+                                itemBuilder: (context, index) {
+                                  final video = controller.videos[index];
+                                  return _buildVideoCard(video);
+                                },
+                              ),
+                              if (controller.isLoading.value)
+                                const Padding(
+                                  padding: EdgeInsets.all(16.0),
+                                  child: Center(
+                                      child: CircularProgressIndicator()),
+                                ),
+                            ],
                           );
                         }),
-                      ),
-
-                      // All Videos Grid
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'All Videos',
-                              style: AppTheme.headlineSmall,
-                            ),
-                            Obx(() {
-                              if (controller.selectedTags.isNotEmpty) {
-                                return TextButton(
-                                  onPressed: controller.clearFilters,
-                                  child: const Text('Clear Filters'),
-                                );
-                              }
-                              return const SizedBox.shrink();
-                            }),
-                          ],
-                        ),
-                      ),
-                      Obx(() {
-                        if (controller.isLoading.value &&
-                            controller.videos.isEmpty) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-
-                        if (!controller.isLoading.value &&
-                            controller.videos.isEmpty) {
-                          return Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(32.0),
-                              child: Text(
-                                'No videos found',
-                                style: AppTheme.titleMedium,
-                              ),
-                            ),
-                          );
-                        }
-
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(8),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.8,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                          ),
-                          itemCount: controller.videos.length,
-                          itemBuilder: (context, index) {
-                            final video = controller.videos[index];
-                            return _buildVideoCard(video);
-                          },
-                        );
-                      }),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

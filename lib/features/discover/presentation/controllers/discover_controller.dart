@@ -42,58 +42,58 @@ class DiscoverController extends GetxController {
   }
 
   void _setupVideoStream() {
-    print('Setting up video stream...');
+    print('🔍 Setting up video stream...');
+    print('🔍 Current category: ${selectedCategory.value}');
+    print('🔍 Current search query: ${searchQuery.value}');
+
     Query query = _firestore
         .collection('videos')
         .orderBy('createdAt', descending: true)
         .limit(_limit);
 
     if (selectedCategory.value != 'all') {
-      print('Applying category filter: ${selectedCategory.value}');
+      print('🔍 Applying category filter: ${selectedCategory.value}');
       query = query.where('category', isEqualTo: selectedCategory.value);
     }
 
     _videosSubscription?.cancel();
     _videosSubscription = query.snapshots().listen(
       (snapshot) {
-        print('Received video update from Firestore');
+        print('🔍 Received ${snapshot.docs.length} videos from Firestore');
         if (snapshot.docs.isEmpty) {
+          print('🔍 No videos found in query result');
           hasMore.value = false;
           return;
         }
 
         _lastDocument = snapshot.docs.last;
-        var loadedVideos =
-            snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
+        var loadedVideos = snapshot.docs.map((doc) {
+          final video = VideoModel.fromFirestore(doc);
+          print('🔍 Loaded video: ${video.title} (ID: ${video.id})');
+          return video;
+        }).toList();
 
         // Apply search filter in memory
         if (searchQuery.value.isNotEmpty) {
           final searchLower = searchQuery.value.toLowerCase();
-          print('Applying search filtering for: $searchLower');
+          print('🔍 Applying search filtering for: $searchLower');
           loadedVideos = loadedVideos
               .where((video) =>
                   video.title.toLowerCase().contains(searchLower) ||
                   video.description.toLowerCase().contains(searchLower) ||
                   video.username.toLowerCase().contains(searchLower))
               .toList();
-          print('After search filtering: ${loadedVideos.length} videos remain');
-        }
-
-        // Apply tag filter in memory
-        if (selectedTags.isNotEmpty) {
-          print('Applying tag filtering: ${selectedTags.join(', ')}');
-          loadedVideos = loadedVideos
-              .where((video) =>
-                  video.topics.any((topic) => selectedTags.contains(topic)))
-              .toList();
-          print('After tag filtering: ${loadedVideos.length} videos remain');
+          print(
+              '🔍 After search filtering: ${loadedVideos.length} videos remain');
         }
 
         videos.value = loadedVideos;
-        print('Updated videos list with ${loadedVideos.length} videos');
+        print('🔍 Updated videos list with ${loadedVideos.length} videos');
+        print(
+            '🔍 Video IDs in list: ${loadedVideos.map((v) => v.id).join(", ")}');
       },
       onError: (error) {
-        print('Error in video stream: $error');
+        print('❌ Error in video stream: $error');
       },
     );
   }
@@ -144,13 +144,6 @@ class DiscoverController extends GetxController {
                 video.title.toLowerCase().contains(searchLower) ||
                 video.description.toLowerCase().contains(searchLower) ||
                 video.username.toLowerCase().contains(searchLower))
-            .toList();
-      }
-
-      if (selectedTags.isNotEmpty) {
-        newVideos = newVideos
-            .where((video) =>
-                video.topics.any((topic) => selectedTags.contains(topic)))
             .toList();
       }
 
