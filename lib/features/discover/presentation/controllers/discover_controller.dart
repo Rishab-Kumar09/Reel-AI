@@ -26,6 +26,8 @@ class DiscoverController extends GetxController {
   static const int _limit = 10;
   final RxBool hasMore = true.obs;
 
+  Timer? _searchDebounce;
+
   @override
   void onInit() {
     super.onInit();
@@ -38,6 +40,7 @@ class DiscoverController extends GetxController {
   void onClose() {
     _videosSubscription?.cancel();
     _likesSubscription?.cancel();
+    _searchDebounce?.cancel();
     super.onClose();
   }
 
@@ -91,39 +94,80 @@ class DiscoverController extends GetxController {
         hasMore.value = true;
       }
 
-      Query query = _firestore
-          .collection('videos')
-          .orderBy('createdAt', descending: true)
-          .limit(_limit);
+      // Start with base query
+      Query query = _firestore.collection('videos');
 
+      // Add category filter if not 'all'
       if (selectedCategory.value != 'all') {
-        query = query.where('category', isEqualTo: selectedCategory.value);
+        print('Filtering by category: ${selectedCategory.value}');
+        query = query.where('category',
+            isEqualTo: selectedCategory.value.toLowerCase());
       }
 
+      // Add ordering and limit
+      query = query.orderBy('createdAt', descending: true).limit(_limit);
+
+      // Add pagination if not refreshing
       if (_lastDocument != null && !refresh) {
         query = query.startAfterDocument(_lastDocument!);
       }
 
-      final QuerySnapshot snapshot = await query.get();
-      print('Found ${snapshot.docs.length} videos');
+      final QuerySnapshot snapshot = await query.get().catchError((error) {
+        print('Firestore query error: $error');
+        if (error.toString().contains('indexes?create_composite=')) {
+          print('Missing index detected. Please create the required index.');
+          // Handle missing index gracefully
+          return null;
+        }
+        throw error;
+      });
+
+      // If snapshot is null (due to missing index), return empty results
+      if (snapshot == null) {
+        print('Query failed, possibly due to missing index');
+        hasMore.value = false;
+        videos.clear();
+        return;
+      }
+
+      print(
+          'Found ${snapshot.docs.length} videos for category: ${selectedCategory.value}');
 
       if (snapshot.docs.isEmpty) {
         hasMore.value = false;
+        if (refresh) videos.clear();
         return;
       }
 
       _lastDocument = snapshot.docs.last;
-      final newVideos =
+      var newVideos =
           snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
 
-      // Apply tag filter to new videos
+      // Apply tag filter to new videos if any tags are selected
       if (selectedTags.isNotEmpty) {
         print('Applying tag filtering: ${selectedTags.join(', ')}');
-        newVideos
+        newVideos = newVideos
             .where((video) =>
                 video.topics.any((topic) => selectedTags.contains(topic)))
             .toList();
         print('After tag filtering: ${newVideos.length} videos remain');
+      }
+
+      // Apply search filter if there's a search query
+      if (searchQuery.isNotEmpty) {
+        print('Applying search filter: ${searchQuery.value}');
+        newVideos = newVideos.where((video) {
+          final title = video.title.toLowerCase();
+          final description = video.description.toLowerCase();
+          final username = video.username.toLowerCase();
+          final topics = video.topics.map((t) => t.toLowerCase()).toList();
+
+          return title.contains(searchQuery.value) ||
+              description.contains(searchQuery.value) ||
+              username.contains(searchQuery.value) ||
+              topics.any((t) => t.contains(searchQuery.value));
+        }).toList();
+        print('After search filtering: ${newVideos.length} videos remain');
       }
 
       // Only set hasMore to false if we got less videos than the limit
@@ -139,6 +183,9 @@ class DiscoverController extends GetxController {
     } catch (e, stackTrace) {
       print('Error loading more videos: $e');
       print('Stack trace: $stackTrace');
+      // Handle error gracefully
+      if (refresh) videos.clear();
+      hasMore.value = false;
     } finally {
       isLoading.value = false;
     }
@@ -169,16 +216,25 @@ class DiscoverController extends GetxController {
   void setCategory(String category) {
     print('Setting category to: $category');
     if (selectedCategory.value != category) {
-      selectedCategory.value = category;
+      selectedCategory.value = category.toLowerCase();
+      // Reset pagination when changing category
+      _lastDocument = null;
       loadMoreVideos(refresh: true);
     }
   }
 
   void search(String query) async {
     print('Search called with query: $query');
-    searchQuery.value = query.trim();
-    // Always refresh the video stream when search query changes
-    _setupVideoStream();
+
+    // Cancel previous debounce timer
+    _searchDebounce?.cancel();
+
+    // Set up new debounce timer
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      searchQuery.value = query.trim().toLowerCase();
+      // Use loadMoreVideos to handle all filters together
+      loadMoreVideos(refresh: true);
+    });
   }
 
   void toggleTag(String tag) {
