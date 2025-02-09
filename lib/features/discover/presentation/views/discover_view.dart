@@ -56,6 +56,19 @@ class _DiscoverViewState extends State<DiscoverView>
     super.build(context);
 
     return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          'Discover',
+          style: AppTheme.titleLarge,
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => controller.refreshLikeCounts(),
+            tooltip: 'Refresh like counts',
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [

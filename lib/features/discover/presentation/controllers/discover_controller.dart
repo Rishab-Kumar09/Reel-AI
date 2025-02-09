@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:get/get.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
@@ -18,8 +19,10 @@ class DiscoverController extends GetxController {
   final RxString searchQuery = ''.obs;
   final RxList<String> selectedTags = <String>[].obs;
   final RxSet<String> likedVideoIds = <String>{}.obs;
+  final RxSet<String> _processingLikes = <String>{}.obs;
   StreamSubscription<QuerySnapshot>? _videosSubscription;
   StreamSubscription<QuerySnapshot>? _likesSubscription;
+  StreamSubscription<QuerySnapshot>? _trendingSubscription;
 
   // Pagination
   DocumentSnapshot? _lastDocument;
@@ -27,12 +30,13 @@ class DiscoverController extends GetxController {
   final RxBool hasMore = true.obs;
 
   Timer? _searchDebounce;
+  Map<String, Timer> _likeDebounceTimers = {};
 
   @override
   void onInit() {
     super.onInit();
     _setupVideoStream();
-    loadTrendingVideos();
+    _setupTrendingStream();
     _setupLikesStream();
   }
 
@@ -40,7 +44,9 @@ class DiscoverController extends GetxController {
   void onClose() {
     _videosSubscription?.cancel();
     _likesSubscription?.cancel();
+    _trendingSubscription?.cancel();
     _searchDebounce?.cancel();
+    _likeDebounceTimers.values.forEach((timer) => timer.cancel());
     super.onClose();
   }
 
@@ -76,6 +82,28 @@ class DiscoverController extends GetxController {
       },
       onError: (error) {
         print('Error in video stream: $error');
+      },
+    );
+  }
+
+  void _setupTrendingStream() {
+    print('Setting up trending videos stream...');
+    _trendingSubscription?.cancel();
+
+    _trendingSubscription = _firestore
+        .collection('videos')
+        .orderBy('likes', descending: true)
+        .limit(5)
+        .snapshots()
+        .listen(
+      (snapshot) {
+        print('Received trending videos update');
+        trendingVideos.value =
+            snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
+        print('Updated trending videos: ${trendingVideos.length}');
+      },
+      onError: (error) {
+        print('Error in trending videos stream: $error');
       },
     );
   }
@@ -193,7 +221,7 @@ class DiscoverController extends GetxController {
 
   Future<void> loadTrendingVideos() async {
     try {
-      print('Loading trending videos...');
+      print('Refreshing trending videos...');
       isTrendingLoading.value = true;
 
       final querySnapshot = await _firestore
@@ -273,91 +301,89 @@ class DiscoverController extends GetxController {
   }
 
   Future<void> toggleLike(String videoId) async {
-    try {
-      final userId = _authController.user.value?.id;
-      if (userId == null) return;
-
-      final videoRef = _firestore.collection('videos').doc(videoId);
-      final likeRef = _firestore.collection('likes').doc('${videoId}_$userId');
-
-      final likeDoc = await likeRef.get();
-
-      await _firestore.runTransaction((transaction) async {
-        if (likeDoc.exists) {
-          // Unlike
-          transaction.delete(likeRef);
-          transaction.update(videoRef, {
-            'likes': FieldValue.increment(-1),
-          });
-          likedVideoIds.remove(videoId);
-        } else {
-          // Like
-          transaction.set(likeRef, {
-            'userId': userId,
-            'videoId': videoId,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          transaction.update(videoRef, {
-            'likes': FieldValue.increment(1),
-          });
-          likedVideoIds.add(videoId);
-        }
-      });
-
-      // Update local state for trending videos
-      final trendingIndex = trendingVideos.indexWhere((v) => v.id == videoId);
-      if (trendingIndex != -1) {
-        final video = trendingVideos[trendingIndex];
-        trendingVideos[trendingIndex] = VideoModel(
-          id: video.id,
-          userId: video.userId,
-          username: video.username,
-          videoUrl: video.videoUrl,
-          thumbnailUrl: video.thumbnailUrl,
-          title: video.title,
-          description: video.description,
-          category: video.category,
-          topics: video.topics,
-          skills: video.skills,
-          difficultyLevel: video.difficultyLevel,
-          duration: video.duration,
-          likes: likeDoc.exists ? video.likes - 1 : video.likes + 1,
-          comments: video.comments,
-          shares: video.shares,
-          createdAt: video.createdAt,
-          aiMetadata: video.aiMetadata,
-          isVertical: video.isVertical,
-        );
-      }
-
-      // Update local state for regular videos
-      final videoIndex = videos.indexWhere((v) => v.id == videoId);
-      if (videoIndex != -1) {
-        final video = videos[videoIndex];
-        videos[videoIndex] = VideoModel(
-          id: video.id,
-          userId: video.userId,
-          username: video.username,
-          videoUrl: video.videoUrl,
-          thumbnailUrl: video.thumbnailUrl,
-          title: video.title,
-          description: video.description,
-          category: video.category,
-          topics: video.topics,
-          skills: video.skills,
-          difficultyLevel: video.difficultyLevel,
-          duration: video.duration,
-          likes: likeDoc.exists ? video.likes - 1 : video.likes + 1,
-          comments: video.comments,
-          shares: video.shares,
-          createdAt: video.createdAt,
-          aiMetadata: video.aiMetadata,
-          isVertical: video.isVertical,
-        );
-      }
-    } catch (e) {
-      print('Error toggling like: $e');
+    // If a like operation is already in progress for this video, ignore the new request
+    if (_processingLikes.contains(videoId)) {
+      print('Like operation already in progress for video: $videoId');
+      return;
     }
+
+    // Cancel any existing debounce timer for this video
+    _likeDebounceTimers[videoId]?.cancel();
+
+    // Set up new debounce timer
+    _likeDebounceTimers[videoId] =
+        Timer(const Duration(milliseconds: 300), () async {
+      try {
+        _processingLikes.add(videoId);
+
+        final userId = _authController.user.value?.id;
+        if (userId == null) return;
+
+        final videoRef = _firestore.collection('videos').doc(videoId);
+        final likeRef =
+            _firestore.collection('likes').doc('${videoId}_$userId');
+
+        await _firestore.runTransaction((transaction) async {
+          // Read both documents inside the transaction for consistency
+          final videoDoc = await transaction.get(videoRef);
+          final likeDoc = await transaction.get(likeRef);
+
+          if (!videoDoc.exists) {
+            print('Video document does not exist: $videoId');
+            return;
+          }
+
+          final currentLikes = videoDoc.data()?['likes'] ?? 0;
+
+          if (likeDoc.exists) {
+            // Unlike - ensure likes don't go below 0
+            if (currentLikes > 0) {
+              transaction.delete(likeRef);
+              transaction.update(videoRef, {
+                'likes': math.max<int>(
+                    0, currentLikes - 1), // Ensure we don't go below 0
+              });
+              likedVideoIds.remove(videoId);
+            }
+          } else {
+            // Like
+            transaction.set(likeRef, {
+              'userId': userId,
+              'videoId': videoId,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            transaction.update(videoRef, {
+              'likes': currentLikes + 1,
+            });
+            likedVideoIds.add(videoId);
+          }
+        });
+
+        // Get the updated video document after transaction completes
+        final updatedVideoDoc = await videoRef.get();
+        if (updatedVideoDoc.exists) {
+          final updatedVideo = VideoModel.fromFirestore(updatedVideoDoc);
+
+          // Update local state for regular videos
+          final videoIndex = videos.indexWhere((v) => v.id == videoId);
+          if (videoIndex != -1) {
+            videos[videoIndex] = updatedVideo;
+          }
+
+          // Also update trending videos if this video is in there
+          final trendingIndex =
+              trendingVideos.indexWhere((v) => v.id == videoId);
+          if (trendingIndex != -1) {
+            trendingVideos[trendingIndex] = updatedVideo;
+          }
+        }
+      } catch (e) {
+        print('Error toggling like: $e');
+      } finally {
+        _processingLikes.remove(videoId);
+        _likeDebounceTimers.remove(videoId);
+      }
+    });
   }
 
   bool isVideoLiked(String videoId) {
@@ -418,6 +444,63 @@ class DiscoverController extends GetxController {
       });
     } catch (e) {
       print('Error sharing video: $e');
+    }
+  }
+
+  Future<void> refreshLikeCounts() async {
+    try {
+      print('Starting like count refresh...');
+      isLoading.value = true;
+
+      final videosSnapshot = await _firestore.collection('videos').get();
+      print('Found ${videosSnapshot.docs.length} videos to process');
+
+      final batch = _firestore.batch();
+      var updatedCount = 0;
+
+      for (var videoDoc in videosSnapshot.docs) {
+        final likesSnapshot = await _firestore
+            .collection('likes')
+            .where('videoId', isEqualTo: videoDoc.id)
+            .count()
+            .get();
+
+        final actualLikeCount = likesSnapshot.count;
+        final currentLikeCount = videoDoc.data()['likes'] ?? 0;
+
+        if (actualLikeCount != currentLikeCount) {
+          print(
+              'Fixing like count for video ${videoDoc.id}: $currentLikeCount -> $actualLikeCount');
+          batch.update(videoDoc.reference, {'likes': actualLikeCount});
+          updatedCount++;
+        }
+      }
+
+      if (updatedCount > 0) {
+        await batch.commit();
+        print('Updated like counts for $updatedCount videos');
+        await loadMoreVideos(refresh: true);
+        await loadTrendingVideos();
+      }
+
+      Get.snackbar(
+        'Success',
+        'Like counts refreshed. Updated $updatedCount videos.',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green.withOpacity(0.1),
+        colorText: Colors.green,
+      );
+    } catch (e) {
+      print('Error refreshing like counts: $e');
+      Get.snackbar(
+        'Error',
+        'Failed to refresh like counts: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.1),
+        colorText: Colors.red,
+      );
+    } finally {
+      isLoading.value = false;
     }
   }
 }
