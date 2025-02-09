@@ -43,10 +43,13 @@ class DiscoverController extends GetxController {
 
   void _setupVideoStream() {
     print('Setting up video stream...');
-    Query query = _firestore
-        .collection('videos')
-        .orderBy('createdAt', descending: true)
-        .limit(_limit);
+    Query query =
+        _firestore.collection('videos').orderBy('createdAt', descending: true);
+
+    // Remove the limit when there's a search query
+    if (searchQuery.value.isEmpty) {
+      query = query.limit(_limit);
+    }
 
     if (selectedCategory.value != 'all') {
       print('Applying category filter: ${selectedCategory.value}');
@@ -108,7 +111,8 @@ class DiscoverController extends GetxController {
       _setupVideoStream();
       return;
     }
-    if (!hasMore.value) return;
+    // Don't load more if there's a search query
+    if (!hasMore.value || searchQuery.value.isNotEmpty) return;
 
     try {
       isLoading.value = true;
@@ -137,17 +141,7 @@ class DiscoverController extends GetxController {
       var newVideos =
           snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
 
-      // Apply filters to new videos
-      if (searchQuery.value.isNotEmpty) {
-        final searchLower = searchQuery.value.toLowerCase();
-        newVideos = newVideos
-            .where((video) =>
-                video.title.toLowerCase().contains(searchLower) ||
-                video.description.toLowerCase().contains(searchLower) ||
-                video.username.toLowerCase().contains(searchLower))
-            .toList();
-      }
-
+      // Apply tag filter to new videos
       if (selectedTags.isNotEmpty) {
         newVideos = newVideos
             .where((video) =>
@@ -198,48 +192,8 @@ class DiscoverController extends GetxController {
   void search(String query) async {
     print('Search called with query: $query');
     searchQuery.value = query.trim();
-    if (searchQuery.value.isEmpty) {
-      loadMoreVideos(refresh: true);
-      return;
-    }
-    await _searchVideos();
-  }
-
-  Future<void> _searchVideos() async {
-    try {
-      isLoading.value = true;
-      videos.clear();
-
-      print('Searching videos with query: ${searchQuery.value}');
-      final searchLower = searchQuery.value.toLowerCase();
-
-      // Get all videos for searching
-      Query query = _firestore
-          .collection('videos')
-          .orderBy('createdAt', descending: true);
-
-      if (selectedCategory.value != 'all') {
-        query = query.where('category', isEqualTo: selectedCategory.value);
-      }
-
-      final QuerySnapshot snapshot = await query.get();
-      var searchResults = snapshot.docs
-          .map((doc) => VideoModel.fromFirestore(doc))
-          .where((video) =>
-              video.title.toLowerCase().contains(searchLower) ||
-              video.description.toLowerCase().contains(searchLower) ||
-              video.username.toLowerCase().contains(searchLower) ||
-              video.topics
-                  .any((topic) => topic.toLowerCase().contains(searchLower)))
-          .toList();
-
-      print('Found ${searchResults.length} videos matching search query');
-      videos.value = searchResults;
-    } catch (e) {
-      print('Error searching videos: $e');
-    } finally {
-      isLoading.value = false;
-    }
+    // Always refresh the video stream when search query changes
+    _setupVideoStream();
   }
 
   void toggleTag(String tag) {
