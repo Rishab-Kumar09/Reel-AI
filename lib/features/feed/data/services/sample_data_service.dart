@@ -18,6 +18,24 @@ class SampleDataService {
   final FirebaseStorage _storage = FirebaseStorage.instance;
   final AuthController _authController = Get.find<AuthController>();
 
+  // Add subscription variable
+  Subscription? _compressSubscription;
+
+  // Initialize compression subscription
+  void _initCompressSubscription() {
+    _compressSubscription?.unsubscribe();
+    _compressSubscription =
+        VideoCompress.compressProgress$.subscribe((progress) {
+      print('Compression progress: $progress%');
+    });
+  }
+
+  // Dispose subscription
+  void dispose() {
+    _compressSubscription?.unsubscribe();
+    _compressSubscription = null;
+  }
+
   Future<String> _uploadVideoToStorage(String videoUrl, String fileName) async {
     try {
       print('Downloading video from: $videoUrl');
@@ -400,11 +418,83 @@ class SampleDataService {
     }
   }
 
+  Future<String?> _generateAndUploadThumbnail(
+      String videoPath, String videoFileName) async {
+    try {
+      print('Generating thumbnail for video: $videoPath');
+
+      // Verify video file exists
+      final videoFile = File(videoPath);
+      if (!await videoFile.exists()) {
+        throw 'Video file not found at path: $videoPath';
+      }
+
+      // Get video info to determine the best frame for thumbnail
+      final mediaInfo = await VideoCompress.getMediaInfo(videoPath);
+      if (mediaInfo.duration == null) {
+        throw 'Could not get video duration';
+      }
+
+      // Generate thumbnail at 1 second or 10% of video duration, whichever is less
+      final position = mediaInfo.duration! > 10000
+          ? 1000
+          : (mediaInfo.duration! * 0.1).round();
+
+      final thumbnailFile = await VideoCompress.getFileThumbnail(
+        videoPath,
+        quality: 50,
+        position: position,
+      );
+
+      // Verify thumbnail was generated
+      if (!await thumbnailFile.exists()) {
+        throw 'Failed to generate thumbnail';
+      }
+
+      final thumbnailFileName = 'thumb_$videoFileName';
+      final thumbnailRef =
+          _storage.ref().child('thumbnails/$thumbnailFileName');
+
+      print('Uploading thumbnail to Firebase Storage');
+      final uploadTask = await thumbnailRef.putFile(
+        thumbnailFile,
+        SettableMetadata(
+          contentType: 'image/jpeg',
+          customMetadata: {
+            'videoFileName': videoFileName,
+            'generatedAt': DateTime.now().toIso8601String(),
+          },
+        ),
+      );
+
+      if (uploadTask.state != TaskState.success) {
+        throw 'Failed to upload thumbnail';
+      }
+
+      final thumbnailUrl = await thumbnailRef.getDownloadURL();
+      print('Thumbnail uploaded successfully. URL: $thumbnailUrl');
+
+      // Clean up the temporary thumbnail file
+      try {
+        await thumbnailFile.delete();
+      } catch (e) {
+        print('Warning: Failed to delete temporary thumbnail file: $e');
+      }
+
+      return thumbnailUrl;
+    } catch (e) {
+      print('Error generating/uploading thumbnail: $e');
+      // Re-throw the error to be handled by the caller
+      throw 'Failed to generate or upload thumbnail: $e';
+    }
+  }
+
   Future<void> uploadVideoFromDevice({
     Map<String, dynamic>? metadata,
     Function(double)? onProgress,
   }) async {
     try {
+      _initCompressSubscription();
       // Get current user
       final currentUser = _authController.user.value;
       if (currentUser == null) {
@@ -546,13 +636,29 @@ class SampleDataService {
         print('Error cleaning up temporary files: $e');
       }
 
-      // Add video metadata to Firestore
+      // After successful video upload, generate and upload thumbnail
+      String thumbnailUrl;
+      try {
+        final generatedUrl =
+            await _generateAndUploadThumbnail(videoPath, fileName);
+        if (generatedUrl == null) {
+          throw 'Generated thumbnail URL is null';
+        }
+        thumbnailUrl = generatedUrl;
+        print('Successfully generated and uploaded thumbnail: $thumbnailUrl');
+      } catch (e) {
+        print('Warning: Failed to generate thumbnail: $e');
+        // Continue with a default thumbnail
+        thumbnailUrl =
+            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500';
+      }
+
+      // Add video metadata to Firestore with actual thumbnail if available
       await _addVideo(
         userId: currentUser.id,
         username: currentUser.name ?? currentUser.email,
         videoUrl: downloadUrl,
-        thumbnailUrl:
-            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
+        thumbnailUrl: thumbnailUrl,
         title: metadata?['title'] ?? 'Untitled Video',
         description: metadata?['description'] ?? 'New video upload',
         category: metadata?['category'] ?? 'general',
@@ -575,10 +681,12 @@ class SampleDataService {
     } catch (e) {
       print('Error in uploadVideoFromDevice: $e');
       await VideoCompress.deleteAllCache();
+      dispose();
       rethrow;
     } finally {
       // Ensure cleanup happens even if there's an error
       await VideoCompress.deleteAllCache();
+      dispose();
     }
   }
 
@@ -588,6 +696,7 @@ class SampleDataService {
     Function(double)? onProgress,
   }) async {
     try {
+      _initCompressSubscription();
       // Get current user
       final currentUser = _authController.user.value;
       if (currentUser == null) {
@@ -656,12 +765,16 @@ class SampleDataService {
       final downloadUrl = await storageRef.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
 
-      // Add video metadata to Firestore
+      // After successful video upload, generate and upload thumbnail
+      final thumbnailUrl =
+          await _generateAndUploadThumbnail(videoPath, fileName);
+
+      // Add video metadata to Firestore with actual thumbnail if available
       await _addVideo(
         userId: currentUser.id,
         username: currentUser.name ?? currentUser.email,
         videoUrl: downloadUrl,
-        thumbnailUrl:
+        thumbnailUrl: thumbnailUrl ??
             'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
         title: metadata?['title'] ?? 'Recorded Video',
         description: metadata?['description'] ?? 'Recorded video',
@@ -681,6 +794,9 @@ class SampleDataService {
     } catch (e) {
       print('Error uploading recorded video: $e');
       rethrow;
+    } finally {
+      await VideoCompress.deleteAllCache();
+      dispose();
     }
   }
 }

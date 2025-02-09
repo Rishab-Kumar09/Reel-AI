@@ -43,16 +43,12 @@ class DiscoverController extends GetxController {
 
   void _setupVideoStream() {
     print('Setting up video stream...');
-    Query query =
-        _firestore.collection('videos').orderBy('createdAt', descending: true);
-
-    // Remove the limit when there's a search query
-    if (searchQuery.value.isEmpty) {
-      query = query.limit(_limit);
-    }
+    Query query = _firestore
+        .collection('videos')
+        .orderBy('createdAt', descending: true)
+        .limit(_limit);
 
     if (selectedCategory.value != 'all') {
-      print('Applying category filter: ${selectedCategory.value}');
       query = query.where('category', isEqualTo: selectedCategory.value);
     }
 
@@ -66,34 +62,13 @@ class DiscoverController extends GetxController {
         }
 
         _lastDocument = snapshot.docs.last;
-        var loadedVideos =
+        final loadedVideos =
             snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
 
-        // Apply search filter in memory
-        if (searchQuery.value.isNotEmpty) {
-          final searchLower = searchQuery.value.toLowerCase();
-          print('Applying search filtering for: $searchLower');
-          loadedVideos = loadedVideos.where((video) {
-            return video.title.toLowerCase().contains(searchLower) ||
-                video.description.toLowerCase().contains(searchLower) ||
-                video.username.toLowerCase().contains(searchLower) ||
-                video.topics
-                    .any((topic) => topic.toLowerCase().contains(searchLower));
-          }).toList();
-          print('After search filtering: ${loadedVideos.length} videos remain');
+        // Only update the initial set of videos, don't replace the entire list
+        if (videos.isEmpty) {
+          videos.value = loadedVideos;
         }
-
-        // Apply tag filter in memory
-        if (selectedTags.isNotEmpty) {
-          print('Applying tag filtering: ${selectedTags.join(', ')}');
-          loadedVideos = loadedVideos
-              .where((video) =>
-                  video.topics.any((topic) => selectedTags.contains(topic)))
-              .toList();
-          print('After tag filtering: ${loadedVideos.length} videos remain');
-        }
-
-        videos.value = loadedVideos;
         print('Updated videos list with ${loadedVideos.length} videos');
       },
       onError: (error) {
@@ -104,19 +79,17 @@ class DiscoverController extends GetxController {
 
   Future<void> loadMoreVideos({bool refresh = false}) async {
     if (isLoading.value) return;
-    if (refresh) {
-      videos.clear();
-      _lastDocument = null;
-      hasMore.value = true;
-      _setupVideoStream();
-      return;
-    }
-    // Don't load more if there's a search query
-    if (!hasMore.value || searchQuery.value.isNotEmpty) return;
+    if (!hasMore.value && !refresh) return;
 
     try {
       isLoading.value = true;
       print('Loading more videos...');
+
+      if (refresh) {
+        videos.clear();
+        _lastDocument = null;
+        hasMore.value = true;
+      }
 
       Query query = _firestore
           .collection('videos')
@@ -127,30 +100,42 @@ class DiscoverController extends GetxController {
         query = query.where('category', isEqualTo: selectedCategory.value);
       }
 
-      if (_lastDocument != null) {
+      if (_lastDocument != null && !refresh) {
         query = query.startAfterDocument(_lastDocument!);
       }
 
       final QuerySnapshot snapshot = await query.get();
+      print('Found ${snapshot.docs.length} videos');
+
       if (snapshot.docs.isEmpty) {
         hasMore.value = false;
         return;
       }
 
       _lastDocument = snapshot.docs.last;
-      var newVideos =
+      final newVideos =
           snapshot.docs.map((doc) => VideoModel.fromFirestore(doc)).toList();
 
       // Apply tag filter to new videos
       if (selectedTags.isNotEmpty) {
-        newVideos = newVideos
+        print('Applying tag filtering: ${selectedTags.join(', ')}');
+        newVideos
             .where((video) =>
                 video.topics.any((topic) => selectedTags.contains(topic)))
             .toList();
+        print('After tag filtering: ${newVideos.length} videos remain');
       }
 
-      videos.addAll(newVideos);
-      print('Added ${newVideos.length} more videos to the discover feed');
+      // Only set hasMore to false if we got less videos than the limit
+      hasMore.value = snapshot.docs.length >= _limit;
+
+      if (refresh) {
+        videos.value = newVideos;
+      } else {
+        videos.addAll(newVideos);
+      }
+      print(
+          'Updated videos list with ${newVideos.length} videos. Total: ${videos.length}');
     } catch (e, stackTrace) {
       print('Error loading more videos: $e');
       print('Stack trace: $stackTrace');

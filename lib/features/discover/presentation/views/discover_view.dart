@@ -7,6 +7,7 @@ import 'package:flutter_firebase_app_new/features/feed/presentation/views/video_
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
+import 'dart:async';
 
 class DiscoverView extends StatefulWidget {
   const DiscoverView({super.key});
@@ -15,39 +16,44 @@ class DiscoverView extends StatefulWidget {
   State<DiscoverView> createState() => _DiscoverViewState();
 }
 
-class _DiscoverViewState extends State<DiscoverView> {
-  final Map<String, VideoPlayerController> _videoControllers = {};
+class _DiscoverViewState extends State<DiscoverView>
+    with AutomaticKeepAliveClientMixin {
+  final DiscoverController controller = Get.put(DiscoverController());
+  final ScrollController _scrollController = ScrollController();
+  Timer? _debounce;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
 
   @override
   void dispose() {
-    for (var controller in _videoControllers.values) {
-      controller.dispose();
-    }
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    _debounce?.cancel();
     super.dispose();
   }
 
-  Future<VideoPlayerController?> _getVideoController(String videoUrl) async {
-    if (!_videoControllers.containsKey(videoUrl)) {
-      try {
-        final controller =
-            VideoPlayerController.networkUrl(Uri.parse(videoUrl));
-        _videoControllers[videoUrl] = controller;
-        await controller.initialize();
-        // Seek to the first frame
-        await controller.seekTo(Duration.zero);
-        await controller.setVolume(0.0);
-        return controller;
-      } catch (e) {
-        print('Error initializing video controller for $videoUrl: $e');
-        return null;
+  void _onScroll() {
+    if (_debounce?.isActive ?? false) return;
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      if (_scrollController.position.pixels >=
+          _scrollController.position.maxScrollExtent - 200) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          controller.loadMoreVideos();
+        });
       }
-    }
-    return _videoControllers[videoUrl];
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final controller = Get.put(DiscoverController());
+    super.build(context);
 
     return Scaffold(
       body: SafeArea(
@@ -107,53 +113,57 @@ class _DiscoverViewState extends State<DiscoverView> {
             // Content
             Expanded(
               child: RefreshIndicator(
-                onRefresh: () async {
-                  await Future.wait([
-                    controller.loadMoreVideos(refresh: true),
-                    controller.loadTrendingVideos(),
-                  ]);
-                },
-                child: SingleChildScrollView(
+                onRefresh: () => controller.loadMoreVideos(refresh: true),
+                child: CustomScrollView(
+                  controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Trending Section
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Text(
-                          'Trending',
-                          style: AppTheme.headlineSmall,
-                        ),
+                  slivers: [
+                    // Trending Section
+                    SliverToBoxAdapter(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'Trending',
+                              style: AppTheme.headlineSmall,
+                            ),
+                          ),
+                          SizedBox(
+                            height: 200,
+                            child: Obx(() {
+                              if (controller.isTrendingLoading.value) {
+                                return const Center(
+                                    child: CircularProgressIndicator());
+                              }
+
+                              if (controller.trendingVideos.isEmpty) {
+                                return const Center(
+                                  child: Text('No trending videos'),
+                                );
+                              }
+
+                              return ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 16),
+                                itemCount: controller.trendingVideos.length,
+                                itemBuilder: (context, index) {
+                                  final video =
+                                      controller.trendingVideos[index];
+                                  return _buildTrendingVideoCard(video);
+                                },
+                              );
+                            }),
+                          ),
+                        ],
                       ),
-                      SizedBox(
-                        height: 200,
-                        child: Obx(() {
-                          if (controller.isTrendingLoading.value) {
-                            return const Center(
-                                child: CircularProgressIndicator());
-                          }
+                    ),
 
-                          if (controller.trendingVideos.isEmpty) {
-                            return const Center(
-                              child: Text('No trending videos'),
-                            );
-                          }
-
-                          return ListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: controller.trendingVideos.length,
-                            itemBuilder: (context, index) {
-                              final video = controller.trendingVideos[index];
-                              return _buildTrendingVideoCard(video);
-                            },
-                          );
-                        }),
-                      ),
-
-                      // All Videos Grid
-                      Padding(
+                    // All Videos Header
+                    SliverToBoxAdapter(
+                      child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -174,16 +184,21 @@ class _DiscoverViewState extends State<DiscoverView> {
                           ],
                         ),
                       ),
-                      Obx(() {
-                        if (controller.isLoading.value &&
-                            controller.videos.isEmpty) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
+                    ),
 
-                        if (!controller.isLoading.value &&
-                            controller.videos.isEmpty) {
-                          return Center(
+                    // All Videos Grid
+                    Obx(() {
+                      if (controller.isLoading.value &&
+                          controller.videos.isEmpty) {
+                        return const SliverFillRemaining(
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+
+                      if (!controller.isLoading.value &&
+                          controller.videos.isEmpty) {
+                        return SliverFillRemaining(
+                          child: Center(
                             child: Padding(
                               padding: const EdgeInsets.all(32.0),
                               child: Text(
@@ -191,29 +206,44 @@ class _DiscoverViewState extends State<DiscoverView> {
                                 style: AppTheme.titleMedium,
                               ),
                             ),
-                          );
-                        }
+                          ),
+                        );
+                      }
 
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          padding: const EdgeInsets.all(8),
+                      return SliverPadding(
+                        padding: const EdgeInsets.all(16),
+                        sliver: SliverGrid(
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
-                            childAspectRatio: 0.8,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
+                            crossAxisSpacing: 16,
+                            mainAxisSpacing: 16,
+                            childAspectRatio: 9 / 16,
                           ),
-                          itemCount: controller.videos.length,
-                          itemBuilder: (context, index) {
-                            final video = controller.videos[index];
-                            return _buildVideoCard(video);
-                          },
-                        );
-                      }),
-                    ],
-                  ),
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              if (index >= controller.videos.length) {
+                                // Load more videos when reaching the end
+                                if (!controller.isLoading.value) {
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    controller.loadMoreVideos();
+                                  });
+                                }
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              }
+                              final video = controller.videos[index];
+                              return _buildVideoCard(video);
+                            },
+                            childCount: controller.videos.length +
+                                (controller.hasMore.value ? 1 : 0),
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
                 ),
               ),
             ),
@@ -268,36 +298,19 @@ class _DiscoverViewState extends State<DiscoverView> {
   }
 
   Widget _buildVideoThumbnail(VideoModel video) {
-    return FutureBuilder<VideoPlayerController?>(
-      future: _getVideoController(video.videoUrl),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-          return const Center(
-            child: Icon(
-              Icons.play_circle_outline,
-              size: 32,
-              color: AppTheme.primaryColor,
-            ),
-          );
-        }
-
-        return SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: snapshot.data!.value.size.width,
-              height: snapshot.data!.value.size.height,
-              child: VideoPlayer(snapshot.data!),
-            ),
-          ),
-        );
-      },
+    return CachedNetworkImage(
+      imageUrl: video.thumbnailUrl,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+      errorWidget: (context, url, error) => const Center(
+        child: Icon(
+          Icons.play_circle_outline,
+          size: 32,
+          color: AppTheme.primaryColor,
+        ),
+      ),
     );
   }
 

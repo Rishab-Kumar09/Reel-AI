@@ -1,9 +1,11 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:flutter_firebase_app_new/core/routes/app_pages.dart';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:flutter_firebase_app_new/scripts/thumbnail_migration.dart';
 import 'firebase_options.dart';
 
 class InitialBinding extends Bindings {
@@ -24,11 +26,44 @@ void main() async {
       );
     }
 
+    // Start the app
     runApp(const MyApp());
+
+    // Run migration in background after app starts
+    Future.delayed(const Duration(seconds: 2), () {
+      print('Scheduling thumbnail migration...');
+      compute(_runMigrationInBackground, null).then((_) {
+        print('Background migration completed');
+      }).catchError((error) {
+        print('Error in background migration: $error');
+      });
+    });
   } catch (e) {
     print('Error initializing app: $e');
-    // Still run the app even if Firebase fails
     runApp(const MyApp());
+  }
+}
+
+Future<void> _runMigrationInBackground(void _) async {
+  try {
+    print('Starting thumbnail migration in background isolate...');
+
+    // Re-initialize Firebase in the new isolate
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+
+    final migrationScript = ThumbnailMigrationScript();
+    await migrationScript.startMigration();
+
+    final stats = migrationScript.getMigrationStats();
+    print('\nMigration completed in background!');
+    print('Total processed: ${stats['processedCount']}');
+    print('Successful: ${stats['successCount']}');
+    print('Failed: ${stats['failureCount']}');
+  } catch (e) {
+    print('Error running thumbnail migration: $e');
+    rethrow;
   }
 }
 

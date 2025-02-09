@@ -43,12 +43,14 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
 
         // Get a fresh URL with a new token
         final ref = FirebaseStorage.instance.ref().child(decodedPath);
-        return await ref.getDownloadURL();
+        final freshUrl = await ref.getDownloadURL();
+        print('Got fresh URL for video');
+        return freshUrl;
       }
       return widget.videoUrl;
     } catch (e) {
       print('Error getting valid video URL: $e');
-      throw 'Failed to get valid video URL';
+      throw 'Failed to get valid video URL: $e';
     }
   }
 
@@ -56,7 +58,11 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     final error = _controller.value.errorDescription;
     if (error != null) {
       print('Video player error: $error');
-      if (mounted) {
+      if (error.contains('expired') || error.contains('token')) {
+        // If the error is related to expired token, try to reinitialize with fresh URL
+        print('Attempting to refresh video URL and reinitialize...');
+        _initializeVideo();
+      } else if (mounted) {
         setState(() {
           _error = 'Error playing video: $error';
         });
@@ -73,8 +79,12 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         _isInitialized = false;
       }
 
+      // Try to get a fresh URL first
+      final videoUrl = await _getValidVideoUrl();
+      print('Initializing video with URL: $videoUrl');
+
       _controller = VideoPlayerController.network(
-        widget.videoUrl,
+        videoUrl,
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
       );
 
@@ -90,6 +100,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       if (mounted) {
         setState(() {
           _isInitialized = true;
+          _error = null; // Clear any previous errors
         });
         // Auto-play and loop
         _controller.play();

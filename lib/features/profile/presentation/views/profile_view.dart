@@ -22,13 +22,6 @@ class _ProfileViewState extends State<ProfileView>
   final _profileController = Get.put(ProfileController());
   late TabController _tabController;
 
-  // Maximum number of video controllers to keep in memory
-  static const int _maxControllers = 9;
-
-  // LRU cache for video controllers
-  final Map<String, VideoPlayerController> _videoControllers = {};
-  final List<String> _controllerQueue = [];
-
   @override
   void initState() {
     super.initState();
@@ -38,89 +31,23 @@ class _ProfileViewState extends State<ProfileView>
   @override
   void dispose() {
     _tabController.dispose();
-    for (var controller in _videoControllers.values) {
-      controller.dispose();
-    }
-    _videoControllers.clear();
-    _controllerQueue.clear();
     super.dispose();
   }
 
-  Future<void> _disposeOldestController() async {
-    if (_controllerQueue.isEmpty) return;
-
-    final oldestUrl = _controllerQueue.removeAt(0);
-    final controller = _videoControllers.remove(oldestUrl);
-    if (controller != null) {
-      await controller.dispose();
-      print('Disposed controller for video: $oldestUrl');
-    }
-  }
-
-  Future<VideoPlayerController?> _getVideoController(String videoUrl) async {
-    // If controller exists, move it to the end of the queue (most recently used)
-    if (_videoControllers.containsKey(videoUrl)) {
-      _controllerQueue.remove(videoUrl);
-      _controllerQueue.add(videoUrl);
-      return _videoControllers[videoUrl];
-    }
-
-    try {
-      // If we're at max capacity, remove the oldest controller
-      while (_videoControllers.length >= _maxControllers) {
-        await _disposeOldestController();
-      }
-
-      final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
-      _videoControllers[videoUrl] = controller;
-      _controllerQueue.add(videoUrl);
-
-      await controller.initialize();
-      await controller.seekTo(Duration.zero);
-      await controller.setVolume(0.0);
-
-      print('Initialized new controller for video: $videoUrl');
-      return controller;
-    } catch (e) {
-      print('Error initializing video controller for $videoUrl: $e');
-      // Remove from queue and map if initialization failed
-      _controllerQueue.remove(videoUrl);
-      _videoControllers.remove(videoUrl);
-      return null;
-    }
-  }
-
   Widget _buildVideoThumbnail(VideoModel video) {
-    return FutureBuilder<VideoPlayerController?>(
-      future: _getVideoController(video.videoUrl),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
-        }
-
-        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
-          return const Center(
-            child: Icon(
-              Icons.play_circle_outline,
-              size: 32,
-              color: AppTheme.primaryColor,
-            ),
-          );
-        }
-
-        return SizedBox.expand(
-          child: FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: snapshot.data!.value.size.width,
-              height: snapshot.data!.value.size.height,
-              child: VideoPlayer(snapshot.data!),
-            ),
-          ),
-        );
-      },
+    return CachedNetworkImage(
+      imageUrl: video.thumbnailUrl,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+      errorWidget: (context, url, error) => const Center(
+        child: Icon(
+          Icons.play_circle_outline,
+          size: 32,
+          color: AppTheme.primaryColor,
+        ),
+      ),
     );
   }
 
