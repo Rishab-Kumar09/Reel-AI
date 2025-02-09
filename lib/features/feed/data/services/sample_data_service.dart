@@ -10,6 +10,8 @@ import 'package:mime/mime.dart';
 import 'dart:typed_data';
 import 'package:get/get.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 
 class SampleDataService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -409,11 +411,12 @@ class SampleDataService {
         throw 'No user logged in';
       }
 
-      // Pick video file
+      // Pick video file with more restrictive options
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowCompression: true,
-        withData: true,
+        withData: false,
+        allowMultiple: false,
       );
 
       if (result == null || result.files.isEmpty) {
@@ -421,9 +424,85 @@ class SampleDataService {
       }
 
       PlatformFile file = result.files.first;
+      if (file.path == null) {
+        throw 'Invalid file path';
+      }
 
-      if (file.bytes == null && file.path == null) {
-        throw 'No video data available - both bytes and path are null';
+      print('Selected video path: ${file.path}');
+      print('Selected video size: ${file.size} bytes');
+
+      // Check file size before processing (50MB limit)
+      if (file.size > 50 * 1024 * 1024) {
+        throw 'Video file is too large. Please select a video under 50MB.';
+      }
+
+      // Clean up any existing cache first
+      await VideoCompress.deleteAllCache();
+
+      // Check video duration and trim if necessary
+      String videoPath = file.path!;
+      print('Getting media info for video...');
+      final MediaInfo? mediaInfo = await VideoCompress.getMediaInfo(videoPath);
+
+      if (mediaInfo == null) {
+        throw 'Failed to get video information';
+      }
+
+      print('Video duration: ${mediaInfo.duration} milliseconds');
+      if (mediaInfo.duration != null && mediaInfo.duration! > 90000) {
+        print(
+            'Video duration exceeds 90 seconds, trimming to first 90 seconds...');
+
+        try {
+          print('Starting video compression and trimming...');
+
+          // Stop any ongoing compression
+          await VideoCompress.cancelCompression();
+
+          final MediaInfo? trimmedInfo = await VideoCompress.compressVideo(
+            videoPath,
+            quality: VideoQuality.MediumQuality,
+            deleteOrigin: false,
+            includeAudio: true,
+            startTime: 0,
+            duration: 90,
+            frameRate: 30,
+          );
+
+          if (trimmedInfo?.file == null) {
+            throw 'Failed to process video';
+          }
+
+          videoPath = trimmedInfo!.file!.path;
+          print('Successfully trimmed video. New path: $videoPath');
+
+          // Verify the trimmed file
+          final trimmedFile = File(videoPath);
+          if (!await trimmedFile.exists()) {
+            throw 'Trimmed video file not found';
+          }
+
+          final trimmedSize = await trimmedFile.length();
+          if (trimmedSize == 0) {
+            throw 'Trimmed video file is empty';
+          }
+
+          print('Trimmed video size: $trimmedSize bytes');
+
+          // Clean up the original file if it's in the cache
+          if (file.path!.contains('/cache/')) {
+            try {
+              await File(file.path!).delete();
+              print('Cleaned up original file');
+            } catch (e) {
+              print('Error cleaning up original file: $e');
+            }
+          }
+        } catch (e) {
+          print('Error during video processing: $e');
+          await VideoCompress.deleteAllCache();
+          throw 'Failed to process video: $e';
+        }
       }
 
       // Generate a unique filename
@@ -431,64 +510,75 @@ class SampleDataService {
       print('Uploading video to Firebase Storage: $fileName');
 
       final storageRef = _storage.ref().child('videos/$fileName');
+      final videoFile = File(videoPath);
 
-      try {
-        UploadTask uploadTask;
-        if (file.bytes != null) {
-          uploadTask = storageRef.putData(
-            file.bytes!,
-            SettableMetadata(contentType: 'video/mp4'),
-          );
-        } else if (file.path != null) {
-          uploadTask = storageRef.putFile(
-            File(file.path!),
-            SettableMetadata(contentType: 'video/mp4'),
-          );
-        } else {
-          throw 'No valid video data available';
-        }
-
-        // Listen to upload progress
-        uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-          onProgress?.call(progress);
-        });
-
-        // Wait for upload to complete
-        await uploadTask;
-
-        // Get the download URL
-        final downloadUrl = await storageRef.getDownloadURL();
-        print('Video uploaded successfully. Download URL: $downloadUrl');
-
-        // Add video metadata to Firestore
-        await _addVideo(
-          userId: currentUser.id,
-          username: currentUser.name ?? currentUser.email,
-          videoUrl: downloadUrl,
-          thumbnailUrl:
-              'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
-          title: metadata?['title'] ?? 'Untitled Video',
-          description: metadata?['description'] ?? 'New video upload',
-          category: metadata?['category'] ?? 'general',
-          isVertical: true,
-          topics: metadata?['tags']?.cast<String>() ?? ['General'],
-          skills: ['Content Creation'],
-          difficultyLevel: metadata?['difficultyLevel'] ?? 'beginner',
-          aiMetadata: {
-            'content_tags': metadata?['tags'] ?? ['User Upload'],
-            'key_moments': {
-              'full': [0, 100],
-            },
+      // Upload in chunks
+      final uploadTask = storageRef.putFile(
+        videoFile,
+        SettableMetadata(
+          contentType: 'video/mp4',
+          customMetadata: {
+            'duration': '${mediaInfo.duration}',
+            'size': '${await videoFile.length()}',
           },
-        );
+        ),
+      );
+
+      // Monitor upload progress
+      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        onProgress?.call(progress);
+        print('Upload progress: ${(progress * 100).toStringAsFixed(2)}%');
+      });
+
+      // Wait for upload to complete
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      print('Video uploaded successfully. Download URL: $downloadUrl');
+
+      // Clean up all temporary files and cache
+      try {
+        await VideoCompress.deleteAllCache();
+        if (videoPath != file.path) {
+          await File(videoPath).delete();
+        }
       } catch (e) {
-        print('Error uploading video data: $e');
-        rethrow;
+        print('Error cleaning up temporary files: $e');
       }
+
+      // Add video metadata to Firestore
+      await _addVideo(
+        userId: currentUser.id,
+        username: currentUser.name ?? currentUser.email,
+        videoUrl: downloadUrl,
+        thumbnailUrl:
+            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
+        title: metadata?['title'] ?? 'Untitled Video',
+        description: metadata?['description'] ?? 'New video upload',
+        category: metadata?['category'] ?? 'general',
+        isVertical: true,
+        topics: metadata?['tags']?.cast<String>() ?? ['General'],
+        skills: ['Content Creation'],
+        difficultyLevel: metadata?['difficultyLevel'] ?? 'beginner',
+        aiMetadata: {
+          'content_tags': metadata?['tags'] ?? ['User Upload'],
+          'key_moments': {
+            'full': [
+              0,
+              mediaInfo.duration != null
+                  ? (mediaInfo.duration! / 1000).round()
+                  : 90
+            ],
+          },
+        },
+      );
     } catch (e) {
       print('Error in uploadVideoFromDevice: $e');
+      await VideoCompress.deleteAllCache();
       rethrow;
+    } finally {
+      // Ensure cleanup happens even if there's an error
+      await VideoCompress.deleteAllCache();
     }
   }
 
@@ -504,39 +594,67 @@ class SampleDataService {
         throw 'No user logged in';
       }
 
+      // Check video duration and trim if necessary
+      String videoPath = videoFile.path;
+      final MediaInfo? mediaInfo = await VideoCompress.getMediaInfo(videoPath);
+      if (mediaInfo?.duration != null && mediaInfo!.duration! > 90000) {
+        print(
+            'Video duration exceeds 90 seconds, trimming to first 90 seconds...');
+        // Create a temporary file for the trimmed video
+        final tempDir = await getTemporaryDirectory();
+        final trimmedPath =
+            '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+        try {
+          // Compress and trim the video
+          final MediaInfo? trimmedInfo = await VideoCompress.compressVideo(
+            videoPath,
+            quality: VideoQuality.MediumQuality,
+            deleteOrigin: false,
+            includeAudio: true,
+            startTime: 0,
+            duration: 90, // 90 seconds
+          );
+
+          if (trimmedInfo?.file == null) {
+            throw 'Failed to trim video';
+          }
+
+          videoPath = trimmedInfo!.file!.path;
+          print('Successfully trimmed video to 90 seconds');
+        } catch (e) {
+          print('Error trimming video: $e');
+          throw 'Failed to process video: $e';
+        }
+      }
+
+      print('Processing video for upload...');
       onProgress?.call(0.1);
 
       // Generate a unique filename
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      print('Uploading recorded video to Firebase Storage: $fileName');
-
-      onProgress?.call(0.2);
+      print('Uploading video to Firebase Storage: $fileName');
 
       final storageRef = _storage.ref().child('videos/$fileName');
-
-      onProgress?.call(0.3);
-
-      // Upload the video file
       final uploadTask = storageRef.putFile(
-        videoFile,
+        File(videoPath),
         SettableMetadata(contentType: 'video/mp4'),
       );
 
       // Listen to upload progress
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
         final progress =
-            0.3 + (snapshot.bytesTransferred / snapshot.totalBytes * 0.5);
+            0.1 + (snapshot.bytesTransferred / snapshot.totalBytes) * 0.8;
         onProgress?.call(progress);
       });
 
       // Wait for upload to complete
       await uploadTask;
-      onProgress?.call(0.8);
+      onProgress?.call(0.9);
 
       // Get the download URL
       final downloadUrl = await storageRef.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
-      onProgress?.call(0.9);
 
       // Add video metadata to Firestore
       await _addVideo(

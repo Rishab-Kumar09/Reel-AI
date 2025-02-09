@@ -5,24 +5,24 @@ import 'package:firebase_storage/firebase_storage.dart';
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
   final bool isVertical;
-  final Function(bool) onMuteStateChanged;
+  final Function(bool)? onMuteStateChanged;
 
   const VideoPlayerItem({
-    Key? key,
+    super.key,
     required this.videoUrl,
-    required this.onMuteStateChanged,
-    this.isVertical = false,
-  }) : super(key: key);
+    required this.isVertical,
+    this.onMuteStateChanged,
+  });
 
   @override
   State<VideoPlayerItem> createState() => VideoPlayerItemState();
 }
 
 class VideoPlayerItemState extends State<VideoPlayerItem> {
-  late VideoPlayerController _videoPlayerController;
-  bool _isPlaying = true;
+  late VideoPlayerController _controller;
   bool _isInitialized = false;
   bool _isMuted = false;
+  bool _isPlaying = true;
   String? _error;
   bool _isDoubleTapEnabled = true;
 
@@ -53,7 +53,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   }
 
   void _handleVideoError() {
-    final error = _videoPlayerController.value.errorDescription;
+    final error = _controller.value.errorDescription;
     if (error != null) {
       print('Video player error: $error');
       if (mounted) {
@@ -64,83 +64,83 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     }
   }
 
-  void _initializeVideo() async {
+  Future<void> _initializeVideo() async {
     try {
-      print('Getting valid video URL...');
-      final validUrl = await _getValidVideoUrl();
-      print('Initializing video player for URL: $validUrl');
+      // Dispose of any existing controller first
+      if (_isInitialized) {
+        await _controller.pause();
+        await _controller.dispose();
+        _isInitialized = false;
+      }
 
-      if (!mounted) return;
-
-      _videoPlayerController = VideoPlayerController.network(
-        validUrl,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+      _controller = VideoPlayerController.network(
+        widget.videoUrl,
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
       );
 
-      // Add listener for errors
-      _videoPlayerController.addListener(_handleVideoError);
+      // Add error listener
+      _controller.addListener(_handleVideoError);
 
-      // Initialize with error handling
-      if (!mounted) return;
+      // Initialize with audio unmuted by default
+      await _controller.initialize();
+      _controller.setVolume(1.0);
+      _isMuted = false;
+      widget.onMuteStateChanged?.call(_isMuted);
 
-      await _videoPlayerController.initialize().catchError((error) {
-        print('Error initializing video: $error');
-        if (mounted) {
-          setState(() {
-            _error = 'Error loading video: $error';
-          });
-        }
-        return null;
-      });
-
-      if (!mounted) return;
-
-      if (_videoPlayerController.value.isInitialized) {
+      if (mounted) {
         setState(() {
           _isInitialized = true;
         });
-        _videoPlayerController.setLooping(true);
-        _videoPlayerController.play();
+        // Auto-play and loop
+        _controller.play();
+        _controller.setLooping(true);
       }
     } catch (e) {
-      print('Error in _initializeVideo: $e');
-      if (mounted) {
-        setState(() {
-          _error = 'Error loading video: $e';
-        });
-      }
+      print('Error initializing video: $e');
+      setState(() {
+        _error = 'Error loading video: $e';
+      });
     }
   }
 
   @override
   void dispose() {
-    print('Disposing video player');
-    try {
-      if (_videoPlayerController.value.isInitialized) {
-        _videoPlayerController.pause();
-      }
-      _videoPlayerController.removeListener(_handleVideoError);
-      _videoPlayerController.dispose();
-    } catch (e) {
-      print('Error disposing video player: $e');
+    // Ensure we stop playback and release resources
+    if (_isInitialized) {
+      _controller.removeListener(_handleVideoError);
+      _controller.pause();
+      _controller.dispose();
+      _isInitialized = false;
     }
     super.dispose();
   }
 
-  void _togglePlayPause() {
-    setState(() {
-      _isPlaying = !_isPlaying;
-      _isPlaying
-          ? _videoPlayerController.play()
-          : _videoPlayerController.pause();
-    });
+  @override
+  void didUpdateWidget(VideoPlayerItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.videoUrl != oldWidget.videoUrl) {
+      // Video URL changed, reinitialize with new URL
+      _initializeVideo();
+    }
   }
 
   void toggleMute() {
+    if (!_isInitialized) return;
     setState(() {
       _isMuted = !_isMuted;
-      _videoPlayerController.setVolume(_isMuted ? 0 : 1);
-      widget.onMuteStateChanged(_isMuted);
+      _controller.setVolume(_isMuted ? 0 : 1);
+      widget.onMuteStateChanged?.call(_isMuted);
+    });
+  }
+
+  void togglePlayPause() {
+    if (!_isInitialized) return;
+    setState(() {
+      if (_controller.value.isPlaying) {
+        _controller.pause();
+      } else {
+        _controller.play();
+      }
     });
   }
 
@@ -183,7 +183,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       children: [
         // Video Container
         GestureDetector(
-          onTap: _togglePlayPause,
+          onTap: togglePlayPause,
           onDoubleTapDown: (details) {
             if (!_isDoubleTapEnabled) return;
             _isDoubleTapEnabled = false;
@@ -200,15 +200,15 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                       child: FittedBox(
                         fit: BoxFit.cover,
                         child: SizedBox(
-                          width: _videoPlayerController.value.size.width,
-                          height: _videoPlayerController.value.size.height,
-                          child: VideoPlayer(_videoPlayerController),
+                          width: _controller.value.size.width,
+                          height: _controller.value.size.height,
+                          child: VideoPlayer(_controller),
                         ),
                       ),
                     )
                   : AspectRatio(
-                      aspectRatio: _videoPlayerController.value.aspectRatio,
-                      child: VideoPlayer(_videoPlayerController),
+                      aspectRatio: _controller.value.aspectRatio,
+                      child: VideoPlayer(_controller),
                     ),
             ),
           ),
