@@ -21,7 +21,13 @@ class _ProfileViewState extends State<ProfileView>
   final _authController = Get.find<AuthController>();
   final _profileController = Get.put(ProfileController());
   late TabController _tabController;
+
+  // Maximum number of video controllers to keep in memory
+  static const int _maxControllers = 9;
+
+  // LRU cache for video controllers
   final Map<String, VideoPlayerController> _videoControllers = {};
+  final List<String> _controllerQueue = [];
 
   @override
   void initState() {
@@ -35,26 +41,53 @@ class _ProfileViewState extends State<ProfileView>
     for (var controller in _videoControllers.values) {
       controller.dispose();
     }
+    _videoControllers.clear();
+    _controllerQueue.clear();
     super.dispose();
   }
 
-  Future<VideoPlayerController?> _getVideoController(String videoUrl) async {
-    if (!_videoControllers.containsKey(videoUrl)) {
-      try {
-        final controller =
-            VideoPlayerController.networkUrl(Uri.parse(videoUrl));
-        _videoControllers[videoUrl] = controller;
-        await controller.initialize();
-        // Seek to the first frame
-        await controller.seekTo(Duration.zero);
-        await controller.setVolume(0.0);
-        return controller;
-      } catch (e) {
-        print('Error initializing video controller for $videoUrl: $e');
-        return null;
-      }
+  Future<void> _disposeOldestController() async {
+    if (_controllerQueue.isEmpty) return;
+
+    final oldestUrl = _controllerQueue.removeAt(0);
+    final controller = _videoControllers.remove(oldestUrl);
+    if (controller != null) {
+      await controller.dispose();
+      print('Disposed controller for video: $oldestUrl');
     }
-    return _videoControllers[videoUrl];
+  }
+
+  Future<VideoPlayerController?> _getVideoController(String videoUrl) async {
+    // If controller exists, move it to the end of the queue (most recently used)
+    if (_videoControllers.containsKey(videoUrl)) {
+      _controllerQueue.remove(videoUrl);
+      _controllerQueue.add(videoUrl);
+      return _videoControllers[videoUrl];
+    }
+
+    try {
+      // If we're at max capacity, remove the oldest controller
+      while (_videoControllers.length >= _maxControllers) {
+        await _disposeOldestController();
+      }
+
+      final controller = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
+      _videoControllers[videoUrl] = controller;
+      _controllerQueue.add(videoUrl);
+
+      await controller.initialize();
+      await controller.seekTo(Duration.zero);
+      await controller.setVolume(0.0);
+
+      print('Initialized new controller for video: $videoUrl');
+      return controller;
+    } catch (e) {
+      print('Error initializing video controller for $videoUrl: $e');
+      // Remove from queue and map if initialization failed
+      _controllerQueue.remove(videoUrl);
+      _videoControllers.remove(videoUrl);
+      return null;
+    }
   }
 
   Widget _buildVideoThumbnail(VideoModel video) {
