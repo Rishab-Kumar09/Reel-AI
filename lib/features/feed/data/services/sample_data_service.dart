@@ -599,6 +599,23 @@ class SampleDataService {
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
       print('Uploading video to Firebase Storage: $fileName');
 
+      // Generate and upload thumbnail first
+      String thumbnailUrl;
+      try {
+        final generatedUrl =
+            await _generateAndUploadThumbnail(videoPath, fileName);
+        if (generatedUrl == null) {
+          throw 'Generated thumbnail URL is null';
+        }
+        thumbnailUrl = generatedUrl;
+        print('Successfully generated and uploaded thumbnail: $thumbnailUrl');
+      } catch (e) {
+        print('Warning: Failed to generate thumbnail: $e');
+        // Continue with a default thumbnail
+        thumbnailUrl =
+            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500';
+      }
+
       final storageRef = _storage.ref().child('videos/$fileName');
       final videoFile = File(videoPath);
 
@@ -626,34 +643,7 @@ class SampleDataService {
       final downloadUrl = await snapshot.ref.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
 
-      // Clean up all temporary files and cache
-      try {
-        await VideoCompress.deleteAllCache();
-        if (videoPath != file.path) {
-          await File(videoPath).delete();
-        }
-      } catch (e) {
-        print('Error cleaning up temporary files: $e');
-      }
-
-      // After successful video upload, generate and upload thumbnail
-      String thumbnailUrl;
-      try {
-        final generatedUrl =
-            await _generateAndUploadThumbnail(videoPath, fileName);
-        if (generatedUrl == null) {
-          throw 'Generated thumbnail URL is null';
-        }
-        thumbnailUrl = generatedUrl;
-        print('Successfully generated and uploaded thumbnail: $thumbnailUrl');
-      } catch (e) {
-        print('Warning: Failed to generate thumbnail: $e');
-        // Continue with a default thumbnail
-        thumbnailUrl =
-            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500';
-      }
-
-      // Add video metadata to Firestore with actual thumbnail if available
+      // Add video metadata to Firestore with actual thumbnail
       await _addVideo(
         userId: currentUser.id,
         username: currentUser.name ?? currentUser.email,
@@ -678,6 +668,16 @@ class SampleDataService {
           },
         },
       );
+
+      // Clean up all temporary files and cache
+      try {
+        await VideoCompress.deleteAllCache();
+        if (videoPath != file.path) {
+          await File(videoPath).delete();
+        }
+      } catch (e) {
+        print('Error cleaning up temporary files: $e');
+      }
     } catch (e) {
       print('Error in uploadVideoFromDevice: $e');
       await VideoCompress.deleteAllCache();

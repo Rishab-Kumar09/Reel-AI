@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
+  final String thumbnailUrl;
   final bool isVertical;
   final Function(bool)? onMuteStateChanged;
+  final bool shouldPreload;
 
   const VideoPlayerItem({
     super.key,
     required this.videoUrl,
+    required this.thumbnailUrl,
     required this.isVertical,
     this.onMuteStateChanged,
+    this.shouldPreload = false,
   });
 
   @override
@@ -25,23 +30,23 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   bool _isPlaying = true;
   String? _error;
   bool _isDoubleTapEnabled = true;
+  bool _showThumbnail = true;
 
   @override
   void initState() {
     super.initState();
-    _initializeVideo();
+    if (widget.shouldPreload) {
+      _initializeVideo();
+    }
   }
 
   Future<String> _getValidVideoUrl() async {
     try {
       if (widget.videoUrl
           .startsWith('https://firebasestorage.googleapis.com')) {
-        // Extract the path from the URL
         final uri = Uri.parse(widget.videoUrl);
         final path = uri.path.split('/o/')[1].split('?')[0];
         final decodedPath = Uri.decodeComponent(path);
-
-        // Get a fresh URL with a new token
         final ref = FirebaseStorage.instance.ref().child(decodedPath);
         final freshUrl = await ref.getDownloadURL();
         print('Got fresh URL for video');
@@ -59,7 +64,6 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     if (error != null) {
       print('Video player error: $error');
       if (error.contains('expired') || error.contains('token')) {
-        // If the error is related to expired token, try to reinitialize with fresh URL
         print('Attempting to refresh video URL and reinitialize...');
         _initializeVideo();
       } else if (mounted) {
@@ -72,14 +76,12 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
 
   Future<void> _initializeVideo() async {
     try {
-      // Dispose of any existing controller first
       if (_isInitialized) {
         await _controller.pause();
         await _controller.dispose();
         _isInitialized = false;
       }
 
-      // Try to get a fresh URL first
       final videoUrl = await _getValidVideoUrl();
       print('Initializing video with URL: $videoUrl');
 
@@ -88,10 +90,15 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
       );
 
-      // Add error listener
       _controller.addListener(_handleVideoError);
+      _controller.addListener(() {
+        if (_controller.value.isPlaying && _showThumbnail && mounted) {
+          setState(() {
+            _showThumbnail = false;
+          });
+        }
+      });
 
-      // Initialize with audio unmuted by default
       await _controller.initialize();
       _controller.setVolume(1.0);
       _isMuted = false;
@@ -100,11 +107,13 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       if (mounted) {
         setState(() {
           _isInitialized = true;
-          _error = null; // Clear any previous errors
+          _error = null;
         });
-        // Auto-play and loop
-        _controller.play();
-        _controller.setLooping(true);
+
+        if (widget.shouldPreload) {
+          _controller.play();
+          _controller.setLooping(true);
+        }
       }
     } catch (e) {
       print('Error initializing video: $e');
@@ -116,7 +125,6 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
 
   @override
   void dispose() {
-    // Ensure we stop playback and release resources
     if (_isInitialized) {
       _controller.removeListener(_handleVideoError);
       _controller.pause();
@@ -130,7 +138,11 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   void didUpdateWidget(VideoPlayerItem oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.videoUrl != oldWidget.videoUrl) {
-      // Video URL changed, reinitialize with new URL
+      _initializeVideo();
+    }
+
+    // Start loading if shouldPreload changes to true
+    if (widget.shouldPreload && !oldWidget.shouldPreload) {
       _initializeVideo();
     }
   }
@@ -145,7 +157,10 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   }
 
   void togglePlayPause() {
-    if (!_isInitialized) return;
+    if (!_isInitialized) {
+      _initializeVideo();
+      return;
+    }
     setState(() {
       if (_controller.value.isPlaying) {
         _controller.pause();
@@ -162,11 +177,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: 48,
-            ),
+            const Icon(Icons.error_outline, color: Colors.white, size: 48),
             const SizedBox(height: 16),
             Padding(
               padding: const EdgeInsets.all(16.0),
@@ -177,14 +188,6 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
               ),
             ),
           ],
-        ),
-      );
-    }
-
-    if (!_isInitialized) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: Colors.white,
         ),
       );
     }
@@ -208,18 +211,57 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
             child: Center(
               child: widget.isVertical
                   ? SizedBox.expand(
-                      child: FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _controller.value.size.width,
-                          height: _controller.value.size.height,
-                          child: VideoPlayer(_controller),
-                        ),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (_showThumbnail)
+                            CachedNetworkImage(
+                              imageUrl: widget.thumbnailUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const SizedBox(),
+                              errorWidget: (context, url, error) =>
+                                  const SizedBox(),
+                            ),
+                          if (_isInitialized)
+                            FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _controller.value.size.width,
+                                height: _controller.value.size.height,
+                                child: VideoPlayer(_controller),
+                              ),
+                            ),
+                          if (!_isInitialized && !_showThumbnail)
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            ),
+                        ],
                       ),
                     )
                   : AspectRatio(
                       aspectRatio: _controller.value.aspectRatio,
-                      child: VideoPlayer(_controller),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          if (_showThumbnail)
+                            CachedNetworkImage(
+                              imageUrl: widget.thumbnailUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (context, url) => const SizedBox(),
+                              errorWidget: (context, url, error) =>
+                                  const SizedBox(),
+                            ),
+                          if (_isInitialized) VideoPlayer(_controller),
+                          if (!_isInitialized && !_showThumbnail)
+                            const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
             ),
           ),

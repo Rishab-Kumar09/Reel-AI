@@ -183,8 +183,10 @@ class _FeedViewState extends State<FeedView> {
                   VideoPlayerItem(
                     key: _getPlayerKey(index),
                     videoUrl: video.videoUrl,
+                    thumbnailUrl: video.thumbnailUrl,
                     isVertical: video.isVertical ?? false,
                     onMuteStateChanged: (isMuted) => _isMuted.value = isMuted,
+                    shouldPreload: _shouldPreloadVideo(index),
                   ),
 
                   // Combined Video Controls and Actions
@@ -269,5 +271,15 @@ class _FeedViewState extends State<FeedView> {
       backgroundColor: Colors.transparent,
       enableDrag: true,
     );
+  }
+
+  bool _shouldPreloadVideo(int index) {
+    final currentPage =
+        _pageController.hasClients ? (_pageController.page?.round() ?? 0) : 0;
+
+    // Preload previous, current, and next video
+    return index == currentPage - 1 || // previous video
+        index == currentPage || // current video
+        index == currentPage + 1; // next video
   }
 }
