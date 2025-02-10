@@ -34,23 +34,17 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         multiDexEnabled = true
-        
-        // Enable R8 code shrinking and obfuscation
-        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
     }
 
     buildTypes {
         release {
-            // Enables code shrinking, obfuscation, and optimization
-            minifyEnabled true
-            shrinkResources true
+            // Disable R8 for now
+            minifyEnabled false
+            shrinkResources false
             
-            // Includes the default ProGuard rules files
-            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.debug
         }
         debug {
-            // Speed up debug builds
             minifyEnabled false
             shrinkResources false
             debuggable true
@@ -75,4 +69,7 @@ dependencies {
     
     // Add Kotlin stdlib explicitly to avoid version conflicts
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0"
+    
+    // Add Play Core dependencies
+    implementation 'com.google.android.play:core-ktx:1.8.1'
 }

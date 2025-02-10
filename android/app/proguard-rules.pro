@@ -5,15 +5,18 @@
 -keep class io.flutter.view.** { *; }
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
--keep class io.flutter.plugin.editing.** { *; }
+-keep class io.flutter.embedding.** { *; }
 
 # Firebase
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
--keep class com.google.firebase.analytics.** { *; }
+
+# Play Core
+-keep class com.google.android.play.core.** { *; }
 
 # Kotlin
 -keep class kotlin.** { *; }
+-keep class kotlinx.** { *; }
 -keep class kotlin.Metadata { *; }
 -dontwarn kotlin.**
 -keepclassmembers class **$WhenMappings {
@@ -40,4 +43,9 @@
 # Keep the R class and its fields
 -keep class **.R$* {
     public static <fields>;
-} 
+}
+
+# Keep the entry points
+-keep class * extends io.flutter.embedding.android.FlutterActivity
+-keep class * extends io.flutter.embedding.android.FlutterFragment
+-keep class * extends io.flutter.app.FlutterApplication 

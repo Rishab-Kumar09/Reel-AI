@@ -163,8 +163,9 @@ class _SignupViewState extends State<SignupView> {
                 ),
                 const SizedBox(height: 32),
                 Obx(() => ElevatedButton(
-                      onPressed:
-                          _authController.isLoading.value ? null : _handleSignup,
+                      onPressed: _authController.isLoading.value
+                          ? null
+                          : _handleSignup,
                       child: _authController.isLoading.value
                           ? const SizedBox(
                               height: 20,
@@ -200,4 +201,4 @@ class _SignupViewState extends State<SignupView> {
       ),
     );
   }
-} 
+}
