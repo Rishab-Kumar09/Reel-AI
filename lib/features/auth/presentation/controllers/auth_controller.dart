@@ -51,13 +51,16 @@ class AuthController extends GetxController {
       isLoading.value = true;
       user.value = await _authService.getUserData();
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to load user data',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
-        colorText: AppTheme.errorColor,
-      );
+      // Suppress PigeonUserDetails errors
+      if (!e.toString().contains('PigeonUserDetails')) {
+        Get.snackbar(
+          'Error',
+          'Failed to load user data',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: AppTheme.errorColor.withOpacity(0.1),
+          colorText: AppTheme.errorColor,
+        );
+      }
     } finally {
       isLoading.value = false;
     }

@@ -116,6 +116,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                     thumbnailUrl: video.thumbnailUrl,
                     isVertical: video.isVertical ?? false,
                     onMuteStateChanged: (isMuted) => _isMuted.value = isMuted,
+                    shouldPreload: true,
                   )),
 
             // Video Actions

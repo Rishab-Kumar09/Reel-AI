@@ -70,4 +70,4 @@ class UserModel {
       updatedAt: DateTime.now(),
     );
   }
-} 
+}
