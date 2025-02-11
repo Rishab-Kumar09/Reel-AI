@@ -8,6 +8,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/sample_data_service.dart';
 import 'package:video_player/video_player.dart';
 import 'package:flutter_firebase_app_new/core/routes/app_routes.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
 
 class ProfileView extends StatefulWidget {
   const ProfileView({super.key});
@@ -21,16 +24,29 @@ class _ProfileViewState extends State<ProfileView>
   final _authController = Get.find<AuthController>();
   final _profileController = Get.put(ProfileController());
   late TabController _tabController;
+  final _nameController = TextEditingController();
+  final _bioController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _initializeControllers();
+  }
+
+  void _initializeControllers() {
+    final user = _authController.user.value;
+    if (user != null) {
+      _nameController.text = user.name ?? '';
+      _bioController.text = user.bio ?? '';
+    }
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _nameController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -260,18 +276,218 @@ class _ProfileViewState extends State<ProfileView>
     );
   }
 
-  Future<void> _handleLogout() async {
-    try {
-      await _authController.signOut();
-    } catch (e) {
-      Get.snackbar(
-        'Error',
-        'Failed to logout: $e',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red.withOpacity(0.1),
-        colorText: Colors.red,
-      );
-    }
+  Future<void> _showEditProfileDialog() async {
+    final user = _authController.user.value;
+    if (user == null) return;
+
+    _nameController.text = user.name ?? '';
+    _bioController.text = user.bio ?? '';
+
+    await Get.dialog(
+      AlertDialog(
+        title: Text(
+          'Edit Profile',
+          style: AppTheme.titleMedium,
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Profile Picture
+              GestureDetector(
+                onTap: () async {
+                  // TODO: Implement image picker
+                  final ImagePicker picker = ImagePicker();
+                  final XFile? image = await picker.pickImage(
+                    source: ImageSource.gallery,
+                    maxWidth: 512,
+                    maxHeight: 512,
+                  );
+
+                  if (image != null) {
+                    final file = File(image.path);
+                    final ref = FirebaseStorage.instance
+                        .ref()
+                        .child('profile_pictures')
+                        .child('${user.id}.jpg');
+
+                    await ref.putFile(file);
+                    final photoUrl = await ref.getDownloadURL();
+
+                    final updatedUser = user.copyWith(photoUrl: photoUrl);
+                    await _authController.updateUserData(updatedUser);
+                  }
+                },
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 40,
+                      backgroundImage: user.photoUrl != null
+                          ? CachedNetworkImageProvider(user.photoUrl!)
+                          : null,
+                      child: user.photoUrl == null
+                          ? Icon(
+                              Icons.person,
+                              size: 40,
+                              color: AppTheme.textSecondaryColor,
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.camera_alt,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Name Field
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Display Name',
+                  hintText: 'Enter your display name',
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Bio Field
+              TextField(
+                controller: _bioController,
+                decoration: const InputDecoration(
+                  labelText: 'Bio',
+                  hintText: 'Tell us about yourself',
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text(
+              'Cancel',
+              style: AppTheme.bodyMedium.copyWith(
+                color: AppTheme.textSecondaryColor,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              final updatedUser = user.copyWith(
+                name: _nameController.text.trim(),
+                bio: _bioController.text.trim(),
+              );
+              await _authController.updateUserData(updatedUser);
+              Get.back();
+            },
+            child: Text(
+              'Save',
+              style: AppTheme.bodyMedium.copyWith(
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Add this method to build the profile header
+  Widget _buildProfileHeader() {
+    final user = _authController.user.value;
+    if (user == null) return const SizedBox();
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // Profile Picture
+              GestureDetector(
+                onTap: _showEditProfileDialog,
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 40,
+                      backgroundImage: user.photoUrl != null
+                          ? CachedNetworkImageProvider(user.photoUrl!)
+                          : null,
+                      child: user.photoUrl == null
+                          ? Icon(
+                              Icons.person,
+                              size: 40,
+                              color: AppTheme.textSecondaryColor,
+                            )
+                          : null,
+                    ),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.edit,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              // User Info
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.name ?? user.email.split('@')[0],
+                      style: AppTheme.titleLarge,
+                    ),
+                    if (user.bio?.isNotEmpty ?? false) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        user.bio!,
+                        style: AppTheme.bodyMedium.copyWith(
+                          color: AppTheme.textSecondaryColor,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Edit Profile Button
+          OutlinedButton(
+            onPressed: _showEditProfileDialog,
+            child: const Text('Edit Profile'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -282,93 +498,31 @@ class _ProfileViewState extends State<ProfileView>
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
-            onPressed: _handleLogout,
+            onPressed: () => _authController.signOut(),
           ),
         ],
       ),
-      body: Obx(() {
-        final user = _authController.user.value;
-
-        return NestedScrollView(
-          headerSliverBuilder: (context, innerBoxIsScrolled) => [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    // Profile Image
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
-                      backgroundImage: user?.photoUrl != null
-                          ? CachedNetworkImageProvider(user!.photoUrl!)
-                          : null,
-                      child: user?.photoUrl == null
-                          ? Text(
-                              user?.name?.substring(0, 1).toUpperCase() ??
-                                  user?.email.substring(0, 1).toUpperCase() ??
-                                  'U',
-                              style: AppTheme.headlineLarge.copyWith(
-                                color: AppTheme.primaryColor,
-                              ),
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // User Info
-                    Text(
-                      user?.name ?? 'No Name',
-                      style: AppTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      user?.email ?? '',
-                      style: AppTheme.bodyMedium.copyWith(
-                        color: AppTheme.textSecondaryColor,
-                      ),
-                    ),
-                    if (user?.bio != null && user!.bio!.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        user.bio!,
-                        style: AppTheme.bodyMedium,
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverAppBarDelegate(
-                TabBar(
-                  controller: _tabController,
-                  tabs: const [
-                    Tab(text: 'My Videos'),
-                    Tab(text: 'Liked'),
-                  ],
-                  labelStyle: AppTheme.titleSmall,
-                  unselectedLabelStyle: AppTheme.bodyMedium,
-                  indicatorColor: AppTheme.primaryColor,
-                ),
-              ),
-            ),
-          ],
-          body: TabBarView(
+      body: Column(
+        children: [
+          _buildProfileHeader(),
+          TabBar(
             controller: _tabController,
-            children: [
-              // My Videos Tab
-              Obx(() => _buildVideoGrid(_profileController.userVideos)),
-              // Liked Videos Tab
-              Obx(() => _buildVideoGrid(_profileController.likedVideos)),
+            tabs: const [
+              Tab(text: 'My Videos'),
+              Tab(text: 'Liked'),
             ],
           ),
-        );
-      }),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                Obx(() => _buildVideoGrid(_profileController.userVideos)),
+                Obx(() => _buildVideoGrid(_profileController.likedVideos)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

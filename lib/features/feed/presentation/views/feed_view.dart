@@ -232,6 +232,7 @@ class _FeedViewState extends State<FeedView> {
                           description: video.description,
                           songName: 'Original Audio',
                           title: video.title ?? 'Untitled Video',
+                          userId: video.userId,
                         ),
                         if (video.aiMetadata != null &&
                             video.aiMetadata!['content_tags'] != null)

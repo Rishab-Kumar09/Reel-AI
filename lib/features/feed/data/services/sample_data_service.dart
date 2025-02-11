@@ -45,21 +45,91 @@ class SampleDataService {
         throw 'Failed to download video from source';
       }
 
-      print('Uploading video to Firebase Storage: $fileName');
-      final storageRef = _storage.ref().child('videos/$fileName');
+      print('Processing video for multiple qualities...');
 
-      // Upload video to Firebase Storage
-      await storageRef.putData(
+      // Create a temporary file to store the downloaded video
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/$fileName');
+      await tempFile.writeAsBytes(response.bodyBytes);
+
+      // Generate different quality versions
+      final qualities = [
+        VideoQuality.LowQuality,
+        VideoQuality.MediumQuality,
+        VideoQuality.DefaultQuality,
+      ];
+
+      Map<String, String> qualityUrls = {};
+
+      for (var quality in qualities) {
+        try {
+          final MediaInfo? compressedVideo = await VideoCompress.compressVideo(
+            tempFile.path,
+            quality: quality,
+            deleteOrigin: false,
+          );
+
+          if (compressedVideo?.file != null) {
+            final qualityString = quality == VideoQuality.LowQuality
+                ? 'low'
+                : quality == VideoQuality.MediumQuality
+                    ? 'medium'
+                    : 'high';
+
+            final qualityFileName =
+                '${fileName.split('.').first}_$qualityString.mp4';
+            final storageRef = _storage.ref().child('videos/$qualityFileName');
+
+            await storageRef.putFile(
+              compressedVideo!.file!,
+              SettableMetadata(
+                contentType: 'video/mp4',
+                customMetadata: {
+                  'quality': qualityString,
+                  'width': '${compressedVideo.width}',
+                  'height': '${compressedVideo.height}',
+                  'duration': '${compressedVideo.duration}',
+                },
+              ),
+            );
+
+            final downloadUrl = await storageRef.getDownloadURL();
+            qualityUrls[qualityString] = downloadUrl;
+            print('Uploaded $qualityString quality version: $downloadUrl');
+          }
+        } catch (e) {
+          print('Error processing $quality version: $e');
+        }
+      }
+
+      // Clean up temporary files
+      await tempFile.delete();
+      await VideoCompress.deleteAllCache();
+
+      // Store the original as high quality if compression failed
+      if (qualityUrls.isEmpty) {
+        print('Falling back to original quality upload');
+        final storageRef = _storage.ref().child('videos/$fileName');
+        await storageRef.putData(
           response.bodyBytes,
-          SettableMetadata(
-            contentType: 'video/mp4',
-          ));
+          SettableMetadata(contentType: 'video/mp4'),
+        );
+        final downloadUrl = await storageRef.getDownloadURL();
+        qualityUrls['high'] = downloadUrl;
+      }
 
-      // Get the download URL
-      final downloadUrl = await storageRef.getDownloadURL();
-      print('Video uploaded successfully. Download URL: $downloadUrl');
+      // Return the highest quality URL as default, but store all URLs in metadata
+      final defaultUrl =
+          qualityUrls['high'] ?? qualityUrls['medium'] ?? qualityUrls['low']!;
 
-      return downloadUrl;
+      // Store quality URLs in a separate metadata document
+      await _firestore.collection('video_qualities').doc(fileName).set({
+        'urls': qualityUrls,
+        'default': defaultUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      return defaultUrl;
     } catch (e) {
       print('Error uploading video to storage: $e');
       rethrow;

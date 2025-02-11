@@ -70,15 +70,17 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
       await _authService.createTestUser();
-    } catch (e) {
       Get.snackbar(
-        'Error',
-        e.toString(),
+        'Success',
+        'Signed in successfully',
         snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
-        colorText: AppTheme.errorColor,
-        duration: const Duration(seconds: 3),
+        backgroundColor: AppTheme.successColor.withOpacity(0.1),
+        colorText: AppTheme.successColor,
+        duration: const Duration(milliseconds: 500),
       );
+    } catch (e) {
+      // Silently handle errors
+      print('Test user sign in error: $e');
     } finally {
       isLoading.value = false;
     }
@@ -94,26 +96,44 @@ class AuthController extends GetxController {
         // First try to create the account
         try {
           await _authService.signUpWithEmail(email, password);
+          Get.snackbar(
+            'Success',
+            'Signed in successfully',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: AppTheme.successColor.withOpacity(0.1),
+            colorText: AppTheme.successColor,
+            duration: const Duration(milliseconds: 500),
+          );
         } catch (e) {
           // If account already exists, try to sign in
           if (e is FirebaseAuthException && e.code == 'email-already-in-use') {
             await _authService.signInWithEmail(email, password);
+            Get.snackbar(
+              'Success',
+              'Signed in successfully',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: AppTheme.successColor.withOpacity(0.1),
+              colorText: AppTheme.successColor,
+              duration: const Duration(milliseconds: 500),
+            );
           } else {
             rethrow;
           }
         }
       } else {
         await _authService.signInWithEmail(email, password);
+        Get.snackbar(
+          'Success',
+          'Signed in successfully',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: AppTheme.successColor.withOpacity(0.1),
+          colorText: AppTheme.successColor,
+          duration: const Duration(milliseconds: 500),
+        );
       }
     } catch (e) {
-      Get.snackbar(
-        'Error',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
-        colorText: AppTheme.errorColor,
-        duration: const Duration(seconds: 3),
-      );
+      // Silently handle errors
+      print('Sign in error: $e');
     } finally {
       isLoading.value = false;
     }
@@ -141,18 +161,17 @@ class AuthController extends GetxController {
     try {
       isLoading.value = true;
       await _authService.signInWithGoogle();
+      Get.snackbar(
+        'Success',
+        'Signed in successfully',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppTheme.successColor.withOpacity(0.1),
+        colorText: AppTheme.successColor,
+        duration: const Duration(milliseconds: 500),
+      );
     } catch (e) {
-      // Don't show error if user simply cancels the sign-in
-      if (e.toString() != 'Sign in aborted by user') {
-        Get.snackbar(
-          'Error',
-          e.toString(),
-          snackPosition: SnackPosition.BOTTOM,
-          backgroundColor: AppTheme.errorColor.withOpacity(0.1),
-          colorText: AppTheme.errorColor,
-          duration: const Duration(seconds: 3),
-        );
-      }
+      // Silently handle errors
+      print('Google sign in error: $e');
     } finally {
       isLoading.value = false;
     }

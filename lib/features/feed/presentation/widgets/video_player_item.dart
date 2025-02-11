@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:http/http.dart' as http;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -31,12 +34,158 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   String? _error;
   bool _isDoubleTapEnabled = true;
   bool _showThumbnail = true;
+  String _currentQuality = 'high'; // Track current quality
+  bool _isBuffering = false;
+  double _networkSpeed = 0;
+  Timer? _speedCheckTimer;
+  DateTime? _lastBufferTime;
+  int _bufferCount = 0;
+  static const int BUFFER_THRESHOLD = 3;
+  static const Duration BUFFER_TIME_WINDOW = Duration(minutes: 1);
+  double _bufferProgress = 0.0; // Add buffer progress tracking
 
   @override
   void initState() {
     super.initState();
     if (widget.shouldPreload) {
       _initializeVideo();
+    }
+    _startSpeedCheck();
+  }
+
+  void _startSpeedCheck() {
+    _speedCheckTimer?.cancel();
+    _speedCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _checkNetworkSpeed();
+    });
+  }
+
+  Future<void> _checkNetworkSpeed() async {
+    try {
+      final startTime = DateTime.now();
+      final response =
+          await http.get(Uri.parse('https://www.google.com/favicon.ico'));
+      if (response.statusCode == 200) {
+        final endTime = DateTime.now();
+        final duration = endTime.difference(startTime);
+        final speed = response.bodyBytes.length / duration.inSeconds;
+        setState(() {
+          _networkSpeed = speed;
+        });
+        _adjustQualityBasedOnNetwork(speed);
+      }
+    } catch (e) {
+      print('Error checking network speed: $e');
+    }
+  }
+
+  void _adjustQualityBasedOnNetwork(double speed) {
+    // Speed thresholds in bytes per second
+    const lowThreshold = 50 * 1024; // 50 KB/s
+    const mediumThreshold = 200 * 1024; // 200 KB/s
+
+    String newQuality;
+    if (speed < lowThreshold) {
+      newQuality = 'low';
+    } else if (speed < mediumThreshold) {
+      newQuality = 'medium';
+    } else {
+      newQuality = 'high';
+    }
+
+    if (newQuality != _currentQuality) {
+      _switchQuality(newQuality);
+    }
+  }
+
+  Future<void> _switchQuality(String newQuality) async {
+    try {
+      // Get video qualities from Firestore
+      final videoName = widget.videoUrl.split('/').last.split('?').first;
+      final qualitiesDoc = await FirebaseFirestore.instance
+          .collection('video_qualities')
+          .doc(videoName)
+          .get();
+
+      if (!qualitiesDoc.exists) return;
+
+      final urls = Map<String, String>.from(qualitiesDoc.data()!['urls']);
+      final newUrl = urls[newQuality];
+
+      if (newUrl != null && newUrl != widget.videoUrl) {
+        final currentPosition = _controller.value.position;
+        final wasPlaying = _controller.value.isPlaying;
+
+        // Initialize new controller
+        final newController = VideoPlayerController.network(
+          newUrl,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+        );
+
+        await newController.initialize();
+        await newController.seekTo(currentPosition);
+        if (wasPlaying) {
+          await newController.play();
+        }
+        newController.setVolume(_isMuted ? 0 : 1);
+
+        // Dispose old controller
+        await _controller.dispose();
+
+        setState(() {
+          _controller = newController;
+          _currentQuality = newQuality;
+        });
+      }
+    } catch (e) {
+      print('Error switching quality: $e');
+    }
+  }
+
+  void _handleBuffering() {
+    if (_controller.value.isBuffering) {
+      setState(() {
+        _isBuffering = true;
+      });
+
+      // Track buffer events
+      final now = DateTime.now();
+      if (_lastBufferTime != null &&
+          now.difference(_lastBufferTime!) < BUFFER_TIME_WINDOW) {
+        _bufferCount++;
+        if (_bufferCount >= BUFFER_THRESHOLD) {
+          // Too many buffers in short time, switch to lower quality
+          _switchToLowerQuality();
+          _bufferCount = 0;
+        }
+      } else {
+        _bufferCount = 1;
+      }
+      _lastBufferTime = now;
+
+      // Update buffer progress
+      if (_controller.value.duration != Duration.zero) {
+        final buffered = _controller.value.buffered;
+        if (buffered.isNotEmpty) {
+          final lastBufferedRange = buffered.last;
+          setState(() {
+            _bufferProgress = lastBufferedRange.end.inMilliseconds /
+                _controller.value.duration.inMilliseconds;
+          });
+        }
+      }
+    } else {
+      setState(() {
+        _isBuffering = false;
+      });
+    }
+  }
+
+  void _switchToLowerQuality() {
+    final qualities = ['high', 'medium', 'low'];
+    final currentIndex = qualities.indexOf(_currentQuality);
+    if (currentIndex < qualities.length - 1) {
+      _switchQuality(qualities[currentIndex + 1]);
     }
   }
 
@@ -85,12 +234,55 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       final videoUrl = await _getValidVideoUrl();
       print('Initializing video with URL: $videoUrl');
 
-      _controller = VideoPlayerController.network(
-        videoUrl,
-        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
-      );
+      // Try to get quality variants
+      try {
+        final videoName = videoUrl.split('/').last.split('?').first;
+        final qualitiesDoc = await FirebaseFirestore.instance
+            .collection('video_qualities')
+            .doc(videoName)
+            .get();
 
+        if (qualitiesDoc.exists) {
+          final urls = Map<String, String>.from(qualitiesDoc.data()!['urls']);
+          // Start with appropriate quality based on network speed
+          if (_networkSpeed > 0) {
+            _adjustQualityBasedOnNetwork(_networkSpeed);
+            final newUrl = urls[_currentQuality];
+            if (newUrl != null) {
+              print('Starting with ${_currentQuality} quality');
+              _controller = VideoPlayerController.network(
+                newUrl,
+                videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+              );
+            } else {
+              _controller = VideoPlayerController.network(
+                videoUrl,
+                videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+              );
+            }
+          } else {
+            _controller = VideoPlayerController.network(
+              videoUrl,
+              videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+            );
+          }
+        } else {
+          _controller = VideoPlayerController.network(
+            videoUrl,
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+          );
+        }
+      } catch (e) {
+        print('Error getting quality variants: $e');
+        _controller = VideoPlayerController.network(
+          videoUrl,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false),
+        );
+      }
+
+      // Add listeners
       _controller.addListener(_handleVideoError);
+      _controller.addListener(_handleBuffering);
       _controller.addListener(() {
         if (_controller.value.isPlaying && _showThumbnail && mounted) {
           setState(() {
@@ -99,7 +291,10 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         }
       });
 
+      // Initialize with progressive loading
       await _controller.initialize();
+
+      // Set initial volume
       _controller.setVolume(1.0);
       _isMuted = false;
       widget.onMuteStateChanged?.call(_isMuted);
@@ -108,6 +303,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         setState(() {
           _isInitialized = true;
           _error = null;
+          _isBuffering = false;
         });
 
         if (widget.shouldPreload) {
@@ -119,14 +315,17 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       print('Error initializing video: $e');
       setState(() {
         _error = 'Error loading video: $e';
+        _isBuffering = false;
       });
     }
   }
 
   @override
   void dispose() {
+    _speedCheckTimer?.cancel();
     if (_isInitialized) {
       _controller.removeListener(_handleVideoError);
+      _controller.removeListener(_handleBuffering);
       _controller.pause();
       _controller.dispose();
       _isInitialized = false;
@@ -187,6 +386,15 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                 textAlign: TextAlign.center,
               ),
             ),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _error = null;
+                  _initializeVideo();
+                });
+              },
+              child: const Text('Retry', style: TextStyle(color: Colors.white)),
+            ),
           ],
         ),
       );
@@ -231,12 +439,70 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                                 child: VideoPlayer(_controller),
                               ),
                             ),
-                          if (!_isInitialized && !_showThumbnail)
+                          if (!_isInitialized && !_showThumbnail ||
+                              _isBuffering)
                             const Center(
                               child: CircularProgressIndicator(
                                 color: Colors.white,
                               ),
                             ),
+                          // Buffer Progress Bar
+                          if (_isInitialized)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Video Progress
+                                  if (_controller.value.duration !=
+                                      Duration.zero)
+                                    LinearProgressIndicator(
+                                      value: _controller
+                                              .value.position.inMilliseconds /
+                                          _controller
+                                              .value.duration.inMilliseconds,
+                                      backgroundColor: Colors.white24,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              Colors.white),
+                                      minHeight: 2,
+                                    ),
+                                  // Buffer Progress
+                                  LinearProgressIndicator(
+                                    value: _bufferProgress,
+                                    backgroundColor: Colors.transparent,
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                            Colors.white38),
+                                    minHeight: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          // Quality indicator
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _currentQuality.toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     )
@@ -254,12 +520,70 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                                   const SizedBox(),
                             ),
                           if (_isInitialized) VideoPlayer(_controller),
-                          if (!_isInitialized && !_showThumbnail)
+                          if (!_isInitialized && !_showThumbnail ||
+                              _isBuffering)
                             const Center(
                               child: CircularProgressIndicator(
                                 color: Colors.white,
                               ),
                             ),
+                          // Buffer Progress Bar
+                          if (_isInitialized)
+                            Positioned(
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Video Progress
+                                  if (_controller.value.duration !=
+                                      Duration.zero)
+                                    LinearProgressIndicator(
+                                      value: _controller
+                                              .value.position.inMilliseconds /
+                                          _controller
+                                              .value.duration.inMilliseconds,
+                                      backgroundColor: Colors.white24,
+                                      valueColor:
+                                          const AlwaysStoppedAnimation<Color>(
+                                              Colors.white),
+                                      minHeight: 2,
+                                    ),
+                                  // Buffer Progress
+                                  LinearProgressIndicator(
+                                    value: _bufferProgress,
+                                    backgroundColor: Colors.transparent,
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                            Colors.white38),
+                                    minHeight: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          // Quality indicator
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                _currentQuality.toUpperCase(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                     ),
