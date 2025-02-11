@@ -77,6 +77,9 @@ dependencies:
   timeago: ^3.6.0
   share_plus: ^10.1.4
 
+  # Added from the code block
+  flutter_dotenv: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -101,6 +104,7 @@ flutter:
 
   assets:
     - assets/images/
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

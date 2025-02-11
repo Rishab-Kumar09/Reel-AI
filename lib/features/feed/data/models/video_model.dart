@@ -96,4 +96,44 @@ class VideoModel {
       'isVertical': isVertical,
     };
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'videoUrl': videoUrl,
+        'thumbnailUrl': thumbnailUrl,
+        'title': title,
+        'description': description,
+        'username': username,
+        'userId': userId,
+        'category': category,
+        'createdAt': createdAt?.toIso8601String(),
+        'likes': likes,
+        'comments': comments,
+        'shares': shares,
+        'isVertical': isVertical,
+        'topics': topics,
+        'skills': skills,
+        'difficultyLevel': difficultyLevel,
+        'duration': duration,
+      };
+
+  factory VideoModel.fromJson(Map<String, dynamic> json) => VideoModel(
+        id: json['id'] as String,
+        userId: json['userId'] as String,
+        username: json['username'] as String,
+        videoUrl: json['videoUrl'] as String,
+        thumbnailUrl: json['thumbnailUrl'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String,
+        category: json['category'] as String? ?? 'general',
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        likes: json['likes'] as int? ?? 0,
+        comments: json['comments'] as int? ?? 0,
+        shares: json['shares'] as int? ?? 0,
+        isVertical: json['isVertical'] as bool? ?? false,
+        topics: List<String>.from(json['topics'] ?? []),
+        skills: List<String>.from(json['skills'] ?? []),
+        difficultyLevel: json['difficultyLevel'] as String? ?? 'beginner',
+        duration: json['duration'] as int? ?? 0,
+      );
 }

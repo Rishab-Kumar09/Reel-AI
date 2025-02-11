@@ -6,6 +6,13 @@ import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/services/transcription_service.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/loading_game.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:share_plus/share_plus.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -37,6 +44,8 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   bool _showThumbnail = true;
   String _currentQuality = 'high'; // Track current quality
   bool _isBuffering = false;
+  bool _isGeneratingTranscript = false; // Add this
+  String? _transcript; // Add this
   double _networkSpeed = 0;
   Timer? _speedCheckTimer;
   DateTime? _lastBufferTime;
@@ -370,6 +379,362 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     });
   }
 
+  void _generateTranscript() async {
+    if (_isGeneratingTranscript) return;
+
+    setState(() {
+      _isGeneratingTranscript = true;
+    });
+
+    try {
+      // Show loading game in bottom sheet
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: false,
+        backgroundColor: Colors.transparent,
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) => Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(top: 8, bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Text(
+                  'Generating Transcript...',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Play this game while you wait!',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey,
+                  ),
+                ),
+                Expanded(
+                  child: LoadingGame(
+                    onTranscriptReady: () {
+                      Navigator.of(context).pop();
+                      _showTranscriptBottomSheet();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final transcriptionService = TranscriptionService();
+
+      // First delete all existing transcripts
+      await transcriptionService.deleteAllTranscripts();
+      print('Deleted all existing transcripts');
+
+      final videoId = widget.videoUrl.split('/').last.split('?').first;
+      final video = VideoModel(
+        id: videoId,
+        videoUrl: widget.videoUrl,
+        thumbnailUrl: widget.thumbnailUrl,
+        title: 'Video',
+        description: '',
+        username: '',
+        userId: '',
+        category: 'general',
+        createdAt: DateTime.now(),
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        isVertical: widget.isVertical,
+        topics: ['General'],
+        skills: ['Content Creation'],
+        difficultyLevel: 'beginner',
+        duration: 0,
+      );
+
+      final newTranscript =
+          await transcriptionService.generateTranscript(video);
+      setState(() {
+        _transcript = newTranscript;
+      });
+
+      if (!mounted) return;
+
+      // Close game and show transcript
+      Navigator.of(context).pop();
+      _showTranscriptBottomSheet();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error generating transcript: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isGeneratingTranscript = false;
+      });
+    }
+  }
+
+  void _showTranscriptBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        builder: (context, scrollController) => Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).scaffoldBackgroundColor,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Video Transcript',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Regenerate button
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Regenerate transcript',
+                        onPressed: () async {
+                          try {
+                            final transcriptionService = TranscriptionService();
+                            final videoId = widget.videoUrl
+                                .split('/')
+                                .last
+                                .split('?')
+                                .first;
+
+                            // Delete existing transcript
+                            await transcriptionService
+                                .deleteTranscript(videoId);
+
+                            // Show loading indicator
+                            setState(() {
+                              _isGeneratingTranscript = true;
+                              _transcript = null;
+                            });
+
+                            // Generate new transcript
+                            final video = VideoModel(
+                              id: videoId,
+                              userId: '',
+                              username: '',
+                              videoUrl: widget.videoUrl,
+                              thumbnailUrl: widget.thumbnailUrl,
+                              title: '',
+                              description: '',
+                              category: 'general',
+                              topics: [],
+                              skills: [],
+                              difficultyLevel: 'beginner',
+                              duration: 0,
+                              likes: 0,
+                              comments: 0,
+                              shares: 0,
+                            );
+
+                            final newTranscript = await transcriptionService
+                                .generateTranscript(video);
+
+                            if (!mounted) return;
+                            setState(() {
+                              _transcript = newTranscript;
+                              _isGeneratingTranscript = false;
+                            });
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content:
+                                    Text('Transcript regenerated successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            setState(() {
+                              _isGeneratingTranscript = false;
+                            });
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content:
+                                    Text('Error regenerating transcript: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      // Share button
+                      IconButton(
+                        icon: const Icon(Icons.share),
+                        tooltip: 'Share transcript',
+                        onPressed: () async {
+                          try {
+                            final transcriptionService = TranscriptionService();
+                            final videoId = widget.videoUrl
+                                .split('/')
+                                .last
+                                .split('?')
+                                .first;
+                            final transcript = await transcriptionService
+                                .shareTranscript(videoId);
+
+                            // Get temporary directory
+                            final directory = await getTemporaryDirectory();
+                            final file =
+                                File('${directory.path}/transcript.txt');
+
+                            // Write transcript to file
+                            await file.writeAsString(transcript);
+
+                            // Share the file
+                            await Share.shareXFiles(
+                              [XFile(file.path)],
+                              text: 'Video Transcript',
+                            );
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Share transcript'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            // Fallback to clipboard if share fails
+                            try {
+                              await Clipboard.setData(
+                                  ClipboardData(text: _transcript ?? ''));
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                      'Share failed, copied to clipboard instead'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            } catch (clipboardError) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error sharing transcript: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                      ),
+                      // Delete button
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: 'Delete transcript',
+                        onPressed: () async {
+                          try {
+                            final transcriptionService = TranscriptionService();
+                            final videoId = widget.videoUrl
+                                .split('/')
+                                .last
+                                .split('?')
+                                .first;
+
+                            await transcriptionService
+                                .deleteTranscript(videoId);
+                            setState(() {
+                              _transcript = null;
+                            });
+                            if (!mounted) return;
+
+                            Navigator.of(context).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Transcript deleted'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Error deleting transcript: $e'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                      // Close button
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        tooltip: 'Close',
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const Divider(),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  child: Text(
+                    _transcript ?? 'No transcript available',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -478,60 +843,35 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                                 color: Colors.white,
                               ),
                             ),
-                          // Buffer Progress Bar
-                          if (_isInitialized)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Video Progress
-                                  if (_controller.value.duration !=
-                                      Duration.zero)
-                                    LinearProgressIndicator(
-                                      value: _controller
-                                              .value.position.inMilliseconds /
-                                          _controller
-                                              .value.duration.inMilliseconds,
-                                      backgroundColor: Colors.white24,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                              Colors.white),
-                                      minHeight: 2,
-                                    ),
-                                  // Buffer Progress
-                                  LinearProgressIndicator(
-                                    value: _bufferProgress,
-                                    backgroundColor: Colors.transparent,
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                            Colors.white38),
-                                    minHeight: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          // Quality indicator
+                          // Transcript button (adjusted position)
                           Positioned(
-                            top: 8,
-                            right: 8,
+                            left: 16,
+                            top:
+                                80, // Changed from 16 to 80 to lower the position
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: Colors.black54,
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: Text(
-                                _currentQuality.toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
+                              child: GestureDetector(
+                                onTap: _isGeneratingTranscript
+                                    ? null
+                                    : () => _generateTranscript(),
+                                child: _isGeneratingTranscript
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.description,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                               ),
                             ),
                           ),
@@ -598,60 +938,35 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                                 color: Colors.white,
                               ),
                             ),
-                          // Buffer Progress Bar
-                          if (_isInitialized)
-                            Positioned(
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  // Video Progress
-                                  if (_controller.value.duration !=
-                                      Duration.zero)
-                                    LinearProgressIndicator(
-                                      value: _controller
-                                              .value.position.inMilliseconds /
-                                          _controller
-                                              .value.duration.inMilliseconds,
-                                      backgroundColor: Colors.white24,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                              Colors.white),
-                                      minHeight: 2,
-                                    ),
-                                  // Buffer Progress
-                                  LinearProgressIndicator(
-                                    value: _bufferProgress,
-                                    backgroundColor: Colors.transparent,
-                                    valueColor:
-                                        const AlwaysStoppedAnimation<Color>(
-                                            Colors.white38),
-                                    minHeight: 2,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          // Quality indicator
+                          // Transcript button (adjusted position)
                           Positioned(
-                            top: 8,
-                            right: 8,
+                            left: 16,
+                            top:
+                                80, // Changed from 16 to 80 to lower the position
                             child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
+                              padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: Colors.black54,
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: Text(
-                                _currentQuality.toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                ),
+                              child: GestureDetector(
+                                onTap: _isGeneratingTranscript
+                                    ? null
+                                    : () => _generateTranscript(),
+                                child: _isGeneratingTranscript
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.description,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
                               ),
                             ),
                           ),
@@ -678,6 +993,18 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
               ),
             ),
           ),
+
+        // Combined Video Controls and Actions
+        Positioned(
+          right: 16,
+          bottom: 100,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
       ],
     );
   }
