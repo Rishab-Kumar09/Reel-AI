@@ -4,6 +4,8 @@ import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/controllers/comments_controller.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class CommentsView extends StatefulWidget {
   final String videoId;
@@ -21,6 +23,65 @@ class _CommentsViewState extends State<CommentsView> {
   late final CommentsController _commentsController;
   final TextEditingController _commentController = TextEditingController();
   final AuthController _authController = Get.find<AuthController>();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  Future<String?> _getUserProfilePic(String userId) async {
+    try {
+      final doc = await _firestore.collection('users').doc(userId).get();
+      if (doc.exists) {
+        return doc.data()?['photoUrl'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching user profile pic: $e');
+      return null;
+    }
+  }
+
+  Widget _buildProfilePicture(String userId, String username) {
+    return FutureBuilder<String?>(
+      future: _getUserProfilePic(userId),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          return Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.white,
+                width: 1,
+              ),
+            ),
+            child: ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: snapshot.data!,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => _buildDefaultAvatar(username),
+                errorWidget: (context, url, error) =>
+                    _buildDefaultAvatar(username),
+              ),
+            ),
+          );
+        }
+        return _buildDefaultAvatar(username);
+      },
+    );
+  }
+
+  Widget _buildDefaultAvatar(String username) {
+    return CircleAvatar(
+      radius: 16,
+      backgroundColor: AppTheme.primaryColor.withOpacity(0.2),
+      child: Text(
+        username[0].toUpperCase(),
+        style: AppTheme.bodySmall.copyWith(
+          color: AppTheme.primaryColor,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -84,8 +145,6 @@ class _CommentsViewState extends State<CommentsView> {
           // Comments List
           Expanded(
             child: Obx(() {
-              print(
-                  'Rebuilding comments list. Count: ${_commentsController.comments.length}');
               if (_commentsController.isLoading.value &&
                   _commentsController.comments.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
@@ -116,16 +175,7 @@ class _CommentsViewState extends State<CommentsView> {
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor: AppTheme.primaryColor,
-                          child: Text(
-                            comment.username[0].toUpperCase(),
-                            style: AppTheme.bodySmall.copyWith(
-                              color: AppTheme.textPrimaryColor,
-                            ),
-                          ),
-                        ),
+                        _buildProfilePicture(comment.userId, comment.username),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
@@ -247,7 +297,6 @@ class _CommentsViewState extends State<CommentsView> {
                     onPressed: () {
                       final text = _commentController.text.trim();
                       if (text.isNotEmpty) {
-                        print('Posting comment: $text');
                         _commentsController.addComment(text);
                         _commentController.clear();
                       }

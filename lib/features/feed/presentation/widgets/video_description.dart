@@ -46,6 +46,20 @@ class VideoDescription extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Title First - Larger and More Prominent
+        if (title.isNotEmpty) ...[
+          Text(
+            title,
+            style: AppTheme.headlineSmall.copyWith(
+              color: AppTheme.textPrimaryColor,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+        ],
+        // User Info Section
         if (userId != null)
           FutureBuilder<Map<String, dynamic>?>(
             future: _getUserData(),
@@ -58,8 +72,8 @@ class VideoDescription extends StatelessWidget {
                 children: [
                   // Profile Picture
                   Container(
-                    width: 40,
-                    height: 40,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       border: Border.all(
@@ -77,7 +91,7 @@ class VideoDescription extends StatelessWidget {
                                 child: Icon(
                                   Icons.person,
                                   color: AppTheme.textSecondaryColor,
-                                  size: 24,
+                                  size: 20,
                                 ),
                               ),
                               errorWidget: (context, url, error) => Container(
@@ -85,7 +99,7 @@ class VideoDescription extends StatelessWidget {
                                 child: Icon(
                                   Icons.person,
                                   color: AppTheme.textSecondaryColor,
-                                  size: 24,
+                                  size: 20,
                                 ),
                               ),
                             )
@@ -94,39 +108,23 @@ class VideoDescription extends StatelessWidget {
                               child: Icon(
                                 Icons.person,
                                 color: AppTheme.textSecondaryColor,
-                                size: 24,
+                                size: 20,
                               ),
                             ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   // User Info
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          displayName != null
-                              ? '$displayName (@$username)'
-                              : '@$username',
-                          style: AppTheme.titleMedium.copyWith(
-                            color: AppTheme.textPrimaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (title.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            title,
-                            style: AppTheme.titleMedium.copyWith(
-                              color: AppTheme.textPrimaryColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ],
+                    child: Text(
+                      displayName != null && displayName != username
+                          ? '$displayName\n@$username'
+                          : '@$username',
+                      style: AppTheme.bodyMedium.copyWith(
+                        color: AppTheme.textPrimaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
                     ),
                   ),
                 ],
@@ -138,8 +136,8 @@ class VideoDescription extends StatelessWidget {
             children: [
               // Default Profile Picture
               Container(
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   border: Border.all(
@@ -153,37 +151,20 @@ class VideoDescription extends StatelessWidget {
                     child: Icon(
                       Icons.person,
                       color: AppTheme.textSecondaryColor,
-                      size: 24,
+                      size: 20,
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               // Username
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '@$username',
-                      style: AppTheme.titleMedium.copyWith(
-                        color: AppTheme.textPrimaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    if (title.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        title,
-                        style: AppTheme.titleMedium.copyWith(
-                          color: AppTheme.textPrimaryColor,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  '@$username',
+                  style: AppTheme.bodyMedium.copyWith(
+                    color: AppTheme.textPrimaryColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             ],

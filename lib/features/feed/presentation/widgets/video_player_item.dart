@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -423,12 +424,43 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                         fit: StackFit.expand,
                         children: [
                           if (_showThumbnail)
-                            CachedNetworkImage(
-                              imageUrl: widget.thumbnailUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => const SizedBox(),
-                              errorWidget: (context, url, error) =>
-                                  const SizedBox(),
+                            Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                CachedNetworkImage(
+                                  imageUrl: widget.thumbnailUrl,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) =>
+                                      const SizedBox(),
+                                  errorWidget: (context, url, error) =>
+                                      const SizedBox(),
+                                ),
+                                // Loading overlay
+                                if (!_isInitialized || _isBuffering)
+                                  Container(
+                                    color: Colors.black.withOpacity(0.5),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            _isBuffering
+                                                ? 'Buffering...'
+                                                : 'Loading video...',
+                                            style: AppTheme.bodySmall.copyWith(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           if (_isInitialized)
                             FittedBox(
@@ -512,14 +544,53 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                         fit: StackFit.expand,
                         children: [
                           if (_showThumbnail)
-                            CachedNetworkImage(
-                              imageUrl: widget.thumbnailUrl,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => const SizedBox(),
-                              errorWidget: (context, url, error) =>
-                                  const SizedBox(),
+                            Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                CachedNetworkImage(
+                                  imageUrl: widget.thumbnailUrl,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) =>
+                                      const SizedBox(),
+                                  errorWidget: (context, url, error) =>
+                                      const SizedBox(),
+                                ),
+                                // Loading overlay
+                                if (!_isInitialized || _isBuffering)
+                                  Container(
+                                    color: Colors.black.withOpacity(0.5),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2,
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Text(
+                                            _isBuffering
+                                                ? 'Buffering...'
+                                                : 'Loading video...',
+                                            style: AppTheme.bodySmall.copyWith(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
-                          if (_isInitialized) VideoPlayer(_controller),
+                          if (_isInitialized)
+                            FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: _controller.value.size.width,
+                                height: _controller.value.size.height,
+                                child: VideoPlayer(_controller),
+                              ),
+                            ),
                           if (!_isInitialized && !_showThumbnail ||
                               _isBuffering)
                             const Center(

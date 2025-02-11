@@ -151,6 +151,7 @@ class _VideoPlayerViewState extends State<VideoPlayerView> {
                 description: video.description,
                 songName: 'Original Audio',
                 title: video.title,
+                userId: video.userId,
               ),
             ),
           ],
