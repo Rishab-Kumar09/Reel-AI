@@ -16,6 +16,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/rendering.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/transcript_chat.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -412,7 +413,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       setState(() {
         _transcript = cachedTranscript;
       });
-      _showTranscriptBottomSheet();
+      _showTranscriptBottomSheet(_transcript!);
       return;
     }
 
@@ -467,7 +468,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                   child: LoadingGame(
                     onTranscriptReady: () {
                       Navigator.of(context).pop();
-                      _showTranscriptBottomSheet();
+                      _showTranscriptBottomSheet(_transcript!);
                     },
                   ),
                 ),
@@ -518,7 +519,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
 
       // Close game and show transcript
       Navigator.of(context).pop();
-      _showTranscriptBottomSheet();
+      _showTranscriptBottomSheet(_transcript!);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -601,188 +602,17 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   }
 
   // Update the transcript bottom sheet UI to remove delete and close buttons
-  void _showTranscriptBottomSheet() {
+  void _showTranscriptBottomSheet(String transcript) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      isDismissible: true,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
+        initialChildSize: 0.9,
         minChildSize: 0.5,
-        maxChildSize: 0.95,
-        builder: (context, scrollController) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Video Transcript',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Regenerate button
-                      IconButton(
-                        icon: const Icon(Icons.refresh),
-                        tooltip: 'Regenerate transcript',
-                        onPressed: _regenerateTranscript,
-                      ),
-                      // Share button
-                      IconButton(
-                        icon: const Icon(Icons.share),
-                        tooltip: 'Share transcript',
-                        onPressed: () async {
-                          // Show bottom sheet with options
-                          showModalBottomSheet(
-                            context: context,
-                            builder: (BuildContext context) {
-                              return Container(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ListTile(
-                                      leading: const Icon(Icons.share),
-                                      title: const Text('Share transcript'),
-                                      onTap: () async {
-                                        Navigator.pop(context);
-                                        try {
-                                          final transcriptionService =
-                                              TranscriptionService();
-                                          final videoId = widget.videoUrl
-                                              .split('/')
-                                              .last
-                                              .split('?')
-                                              .first;
-                                          final transcript =
-                                              await transcriptionService
-                                                  .shareTranscript(videoId);
-
-                                          // Get temporary directory
-                                          final directory =
-                                              await getTemporaryDirectory();
-                                          final file = File(
-                                              '${directory.path}/transcript.txt');
-
-                                          // Write transcript to file
-                                          await file.writeAsString(transcript);
-
-                                          // Share the file
-                                          await Share.shareXFiles(
-                                            [XFile(file.path)],
-                                            text: 'Video Transcript',
-                                          );
-
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text('Share transcript'),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                  'Error sharing transcript: $e'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
-                                      },
-                                    ),
-                                    ListTile(
-                                      leading: const Icon(Icons.copy),
-                                      title: const Text('Copy transcript'),
-                                      onTap: () async {
-                                        Navigator.pop(context);
-                                        try {
-                                          final transcriptionService =
-                                              TranscriptionService();
-                                          final videoId = widget.videoUrl
-                                              .split('/')
-                                              .last
-                                              .split('?')
-                                              .first;
-                                          final transcript =
-                                              await transcriptionService
-                                                  .shareTranscript(videoId);
-
-                                          // Copy to clipboard
-                                          await Clipboard.setData(
-                                              ClipboardData(text: transcript));
-
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            const SnackBar(
-                                              content: Text(
-                                                  'Transcript copied to clipboard'),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                  'Error copying transcript: $e'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const Divider(),
-              Expanded(
-                child: SingleChildScrollView(
-                  controller: scrollController,
-                  child: Text(
-                    _transcript ?? 'No transcript available',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => TranscriptChat(
+          transcript: transcript,
         ),
       ),
     );
