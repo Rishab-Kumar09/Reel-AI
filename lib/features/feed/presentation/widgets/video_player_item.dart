@@ -13,6 +13,9 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'package:share_plus/share_plus.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:flutter/rendering.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -53,6 +56,8 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
   static const int BUFFER_THRESHOLD = 3;
   static const Duration BUFFER_TIME_WINDOW = Duration(minutes: 1);
   double _bufferProgress = 0.0; // Add buffer progress tracking
+  // Add static map for transcript cache
+  static final Map<String, String> _transcriptCache = {};
 
   @override
   void initState() {
@@ -379,8 +384,37 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     });
   }
 
+  // Add method to get cached transcript
+  String? _getCachedTranscript() {
+    final videoId = widget.videoUrl.split('/').last.split('?').first;
+    return _transcriptCache[videoId];
+  }
+
+  // Add method to cache transcript
+  void _cacheTranscript(String transcript) {
+    final videoId = widget.videoUrl.split('/').last.split('?').first;
+    _transcriptCache[videoId] = transcript;
+  }
+
+  // Add method to clear cache
+  void _clearTranscriptCache() {
+    final videoId = widget.videoUrl.split('/').last.split('?').first;
+    _transcriptCache.remove(videoId);
+  }
+
+  // Modify _generateTranscript method to use cache
   void _generateTranscript() async {
     if (_isGeneratingTranscript) return;
+
+    // Check cache first
+    final cachedTranscript = _getCachedTranscript();
+    if (cachedTranscript != null) {
+      setState(() {
+        _transcript = cachedTranscript;
+      });
+      _showTranscriptBottomSheet();
+      return;
+    }
 
     setState(() {
       _isGeneratingTranscript = true;
@@ -472,6 +506,10 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
 
       final newTranscript =
           await transcriptionService.generateTranscript(video);
+
+      // Cache the new transcript
+      _cacheTranscript(newTranscript);
+
       setState(() {
         _transcript = newTranscript;
       });
@@ -496,11 +534,79 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     }
   }
 
+  // Modify the regenerate transcript functionality to clear cache
+  Future<void> _regenerateTranscript() async {
+    try {
+      final transcriptionService = TranscriptionService();
+      final videoId = widget.videoUrl.split('/').last.split('?').first;
+
+      // Clear the cache
+      _clearTranscriptCache();
+
+      // Show loading indicator
+      setState(() {
+        _isGeneratingTranscript = true;
+        _transcript = null;
+      });
+
+      // Generate new transcript
+      final video = VideoModel(
+        id: videoId,
+        userId: '',
+        username: '',
+        videoUrl: widget.videoUrl,
+        thumbnailUrl: widget.thumbnailUrl,
+        title: '',
+        description: '',
+        category: 'general',
+        topics: [],
+        skills: [],
+        difficultyLevel: 'beginner',
+        duration: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+      );
+
+      final newTranscript =
+          await transcriptionService.generateTranscript(video);
+
+      // Cache the new transcript
+      _cacheTranscript(newTranscript);
+
+      if (!mounted) return;
+      setState(() {
+        _transcript = newTranscript;
+        _isGeneratingTranscript = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Transcript regenerated successfully'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _isGeneratingTranscript = false;
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error regenerating transcript: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Update the transcript bottom sheet UI to remove delete and close buttons
   void _showTranscriptBottomSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      isDismissible: true,
       builder: (context) => DraggableScrollableSheet(
         initialChildSize: 0.7,
         minChildSize: 0.5,
@@ -539,177 +645,124 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                       IconButton(
                         icon: const Icon(Icons.refresh),
                         tooltip: 'Regenerate transcript',
-                        onPressed: () async {
-                          try {
-                            final transcriptionService = TranscriptionService();
-                            final videoId = widget.videoUrl
-                                .split('/')
-                                .last
-                                .split('?')
-                                .first;
-
-                            // Delete existing transcript
-                            await transcriptionService
-                                .deleteTranscript(videoId);
-
-                            // Show loading indicator
-                            setState(() {
-                              _isGeneratingTranscript = true;
-                              _transcript = null;
-                            });
-
-                            // Generate new transcript
-                            final video = VideoModel(
-                              id: videoId,
-                              userId: '',
-                              username: '',
-                              videoUrl: widget.videoUrl,
-                              thumbnailUrl: widget.thumbnailUrl,
-                              title: '',
-                              description: '',
-                              category: 'general',
-                              topics: [],
-                              skills: [],
-                              difficultyLevel: 'beginner',
-                              duration: 0,
-                              likes: 0,
-                              comments: 0,
-                              shares: 0,
-                            );
-
-                            final newTranscript = await transcriptionService
-                                .generateTranscript(video);
-
-                            if (!mounted) return;
-                            setState(() {
-                              _transcript = newTranscript;
-                              _isGeneratingTranscript = false;
-                            });
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content:
-                                    Text('Transcript regenerated successfully'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          } catch (e) {
-                            setState(() {
-                              _isGeneratingTranscript = false;
-                            });
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content:
-                                    Text('Error regenerating transcript: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
+                        onPressed: _regenerateTranscript,
                       ),
                       // Share button
                       IconButton(
                         icon: const Icon(Icons.share),
                         tooltip: 'Share transcript',
                         onPressed: () async {
-                          try {
-                            final transcriptionService = TranscriptionService();
-                            final videoId = widget.videoUrl
-                                .split('/')
-                                .last
-                                .split('?')
-                                .first;
-                            final transcript = await transcriptionService
-                                .shareTranscript(videoId);
+                          // Show bottom sheet with options
+                          showModalBottomSheet(
+                            context: context,
+                            builder: (BuildContext context) {
+                              return Container(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ListTile(
+                                      leading: const Icon(Icons.share),
+                                      title: const Text('Share transcript'),
+                                      onTap: () async {
+                                        Navigator.pop(context);
+                                        try {
+                                          final transcriptionService =
+                                              TranscriptionService();
+                                          final videoId = widget.videoUrl
+                                              .split('/')
+                                              .last
+                                              .split('?')
+                                              .first;
+                                          final transcript =
+                                              await transcriptionService
+                                                  .shareTranscript(videoId);
 
-                            // Get temporary directory
-                            final directory = await getTemporaryDirectory();
-                            final file =
-                                File('${directory.path}/transcript.txt');
+                                          // Get temporary directory
+                                          final directory =
+                                              await getTemporaryDirectory();
+                                          final file = File(
+                                              '${directory.path}/transcript.txt');
 
-                            // Write transcript to file
-                            await file.writeAsString(transcript);
+                                          // Write transcript to file
+                                          await file.writeAsString(transcript);
 
-                            // Share the file
-                            await Share.shareXFiles(
-                              [XFile(file.path)],
-                              text: 'Video Transcript',
-                            );
+                                          // Share the file
+                                          await Share.shareXFiles(
+                                            [XFile(file.path)],
+                                            text: 'Video Transcript',
+                                          );
 
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Share transcript'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          } catch (e) {
-                            // Fallback to clipboard if share fails
-                            try {
-                              await Clipboard.setData(
-                                  ClipboardData(text: _transcript ?? ''));
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'Share failed, copied to clipboard instead'),
-                                  backgroundColor: Colors.orange,
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Share transcript'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                  'Error sharing transcript: $e'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                    ListTile(
+                                      leading: const Icon(Icons.copy),
+                                      title: const Text('Copy transcript'),
+                                      onTap: () async {
+                                        Navigator.pop(context);
+                                        try {
+                                          final transcriptionService =
+                                              TranscriptionService();
+                                          final videoId = widget.videoUrl
+                                              .split('/')
+                                              .last
+                                              .split('?')
+                                              .first;
+                                          final transcript =
+                                              await transcriptionService
+                                                  .shareTranscript(videoId);
+
+                                          // Copy to clipboard
+                                          await Clipboard.setData(
+                                              ClipboardData(text: transcript));
+
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                  'Transcript copied to clipboard'),
+                                              backgroundColor: Colors.green,
+                                            ),
+                                          );
+                                        } catch (e) {
+                                          if (!mounted) return;
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                  'Error copying transcript: $e'),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ],
                                 ),
                               );
-                            } catch (clipboardError) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Error sharing transcript: $e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
-                          }
+                            },
+                          );
                         },
-                      ),
-                      // Delete button
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: 'Delete transcript',
-                        onPressed: () async {
-                          try {
-                            final transcriptionService = TranscriptionService();
-                            final videoId = widget.videoUrl
-                                .split('/')
-                                .last
-                                .split('?')
-                                .first;
-
-                            await transcriptionService
-                                .deleteTranscript(videoId);
-                            setState(() {
-                              _transcript = null;
-                            });
-                            if (!mounted) return;
-
-                            Navigator.of(context).pop();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Transcript deleted'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
-                          } catch (e) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Error deleting transcript: $e'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      // Close button
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        tooltip: 'Close',
-                        onPressed: () => Navigator.of(context).pop(),
                       ),
                     ],
                   ),
@@ -733,6 +786,34 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         ),
       ),
     );
+  }
+
+  Future<File> _generatePdf(String transcript, String fileName) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) {
+          return pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Header(
+                level: 0,
+                child: pw.Text('Video Transcript',
+                    style: pw.TextStyle(fontSize: 24)),
+              ),
+              pw.SizedBox(height: 20),
+              pw.Text(transcript),
+            ],
+          );
+        },
+      ),
+    );
+
+    final output = await getApplicationDocumentsDirectory();
+    final file = File('${output.path}/$fileName');
+    await file.writeAsBytes(await pdf.save());
+    return file;
   }
 
   @override

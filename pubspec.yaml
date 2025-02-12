@@ -79,6 +79,7 @@ dependencies:
 
   # Added from the code block
   flutter_dotenv: ^5.1.0
+  pdf: ^3.11.2
 
 dev_dependencies:
   flutter_test:

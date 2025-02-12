@@ -139,7 +139,7 @@ class TranscriptionService {
       request.fields['model'] = 'whisper-1';
       request.fields['language'] = 'en';
       request.fields['response_format'] = 'json';
-      request.fields['temperature'] = '0.2';
+      request.fields['temperature'] = '0.1';
 
       request.files.add(
         http.MultipartFile.fromBytes(
@@ -176,7 +176,7 @@ class TranscriptionService {
           'Content-Type': 'application/json',
         },
         body: json.encode({
-          'model': 'gpt-4-turbo-preview',
+          'model': 'gpt-4o-mini',
           'messages': [
             {'role': 'system', 'content': systemPrompt},
             {
