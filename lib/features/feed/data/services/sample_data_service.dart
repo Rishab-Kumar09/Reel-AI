@@ -12,6 +12,8 @@ import 'package:get/get.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/services/transcription_service.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/models/video_model.dart';
 
 class SampleDataService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -310,7 +312,7 @@ class SampleDataService {
     }
   }
 
-  Future<void> _addVideo({
+  Future<DocumentReference<Map<String, dynamic>>> _addVideo({
     required String userId,
     required String username,
     required String videoUrl,
@@ -346,6 +348,7 @@ class SampleDataService {
         'isVertical': isVertical,
       });
       print('Video added with ID: ${docRef.id}');
+      return docRef;
     } catch (e, stackTrace) {
       print('Error in _addVideo: $e');
       print('Stack trace: $stackTrace');
@@ -559,7 +562,56 @@ class SampleDataService {
     }
   }
 
-  Future<void> uploadVideoFromDevice({
+  Future<void> _generateTranscriptDuringUpload(
+      String videoId, String videoUrl) async {
+    try {
+      print('Starting transcript generation for video: $videoId');
+      final transcriptionService = TranscriptionService();
+      final video = VideoModel(
+        id: videoId,
+        userId: '',
+        username: '',
+        videoUrl: videoUrl,
+        thumbnailUrl: '',
+        title: '',
+        description: '',
+        category: 'general',
+        topics: [],
+        skills: [],
+        difficultyLevel: 'beginner',
+        duration: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+      );
+
+      // Update Firestore to indicate transcript generation is in progress
+      await _firestore
+          .collection('videos')
+          .doc(videoId)
+          .update({'transcriptStatus': 'generating'});
+
+      final transcript = await transcriptionService.generateTranscript(video);
+
+      // Update Firestore to indicate transcript generation is complete
+      await _firestore.collection('videos').doc(videoId).update({
+        'transcriptStatus': 'completed',
+        'transcriptUpdatedAt': FieldValue.serverTimestamp(),
+      });
+
+      print('Successfully generated transcript for video: $videoId');
+    } catch (e) {
+      print('Error generating transcript during upload: $e');
+      // Update Firestore to indicate transcript generation failed
+      await _firestore.collection('videos').doc(videoId).update({
+        'transcriptStatus': 'failed',
+        'transcriptError': e.toString(),
+      });
+      // Don't rethrow - we don't want to fail the upload if transcript generation fails
+    }
+  }
+
+  Future<Map<String, dynamic>> uploadVideoFromDevice({
     Map<String, dynamic>? metadata,
     Function(double)? onProgress,
   }) async {
@@ -714,7 +766,7 @@ class SampleDataService {
       print('Video uploaded successfully. Download URL: $downloadUrl');
 
       // Add video metadata to Firestore with actual thumbnail
-      await _addVideo(
+      final docRef = await _addVideo(
         userId: currentUser.id,
         username: currentUser.name ?? currentUser.email,
         videoUrl: downloadUrl,
@@ -739,7 +791,16 @@ class SampleDataService {
         },
       );
 
-      // Clean up all temporary files and cache
+      // Update progress for transcript generation
+      onProgress?.call(0.9);
+      print('Starting transcript generation...');
+
+      // Generate transcript and wait for it to complete
+      final videoId = docRef.id;
+      await _generateTranscriptDuringUpload(videoId, downloadUrl);
+      onProgress?.call(1.0);
+
+      // Clean up temporary files
       try {
         await VideoCompress.deleteAllCache();
         if (videoPath != file.path) {
@@ -748,15 +809,19 @@ class SampleDataService {
       } catch (e) {
         print('Error cleaning up temporary files: $e');
       }
+
+      return {
+        'success': true,
+        'videoId': videoId,
+        'videoUrl': downloadUrl,
+        'thumbnailUrl': thumbnailUrl,
+        'transcriptStatus': 'completed',
+      };
     } catch (e) {
       print('Error in uploadVideoFromDevice: $e');
       await VideoCompress.deleteAllCache();
       dispose();
       rethrow;
-    } finally {
-      // Ensure cleanup happens even if there's an error
-      await VideoCompress.deleteAllCache();
-      dispose();
     }
   }
 

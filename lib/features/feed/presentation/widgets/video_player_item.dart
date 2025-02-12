@@ -403,128 +403,65 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     _transcriptCache.remove(videoId);
   }
 
-  // Modify _generateTranscript method to use cache
-  void _generateTranscript() async {
+  // Replace _generateTranscript with _fetchTranscript
+  void _fetchTranscript() async {
     if (_isGeneratingTranscript) return;
 
-    // Check cache first
-    final cachedTranscript = _getCachedTranscript();
-    if (cachedTranscript != null) {
-      setState(() {
-        _transcript = cachedTranscript;
-      });
-      _showTranscriptBottomSheet(_transcript!);
-      return;
-    }
-
-    setState(() {
-      _isGeneratingTranscript = true;
-    });
-
     try {
-      // Show loading game in bottom sheet
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        isDismissible: false,
-        backgroundColor: Colors.transparent,
-        builder: (context) => DraggableScrollableSheet(
-          initialChildSize: 0.7,
-          minChildSize: 0.5,
-          maxChildSize: 0.95,
-          builder: (context, scrollController) => Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(top: 8, bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Text(
-                  'Generating Transcript...',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Play this game while you wait!',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey,
-                  ),
-                ),
-                Expanded(
-                  child: LoadingGame(
-                    onTranscriptReady: () {
-                      Navigator.of(context).pop();
-                      _showTranscriptBottomSheet(_transcript!);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
+      // Extract the video filename from the URL
+      final videoFileName = widget.videoUrl.split('/').last.split('?').first;
 
+      // Get the video document from Firestore to get the actual document ID
+      final videoQuery = await FirebaseFirestore.instance
+          .collection('videos')
+          .where('videoUrl', isGreaterThanOrEqualTo: widget.videoUrl)
+          .where('videoUrl', isLessThanOrEqualTo: widget.videoUrl + '\uf8ff')
+          .get();
+
+      if (videoQuery.docs.isEmpty) {
+        throw 'Video document not found';
+      }
+
+      final videoId = videoQuery.docs.first.id;
       final transcriptionService = TranscriptionService();
 
-      // First delete all existing transcripts
-      await transcriptionService.deleteAllTranscripts();
-      print('Deleted all existing transcripts');
-
-      final videoId = widget.videoUrl.split('/').last.split('?').first;
-      final video = VideoModel(
-        id: videoId,
-        videoUrl: widget.videoUrl,
-        thumbnailUrl: widget.thumbnailUrl,
-        title: 'Video',
-        description: '',
-        username: '',
-        userId: '',
-        category: 'general',
-        createdAt: DateTime.now(),
-        likes: 0,
-        comments: 0,
-        shares: 0,
-        isVertical: widget.isVertical,
-        topics: ['General'],
-        skills: ['Content Creation'],
-        difficultyLevel: 'beginner',
-        duration: 0,
-      );
-
-      final newTranscript =
-          await transcriptionService.generateTranscript(video);
-
-      // Cache the new transcript
-      _cacheTranscript(newTranscript);
-
       setState(() {
-        _transcript = newTranscript;
+        _isGeneratingTranscript = true;
       });
 
-      if (!mounted) return;
+      // First check Firestore
+      final existingTranscript =
+          await transcriptionService.getTranscript(videoId);
+      if (existingTranscript != null) {
+        setState(() {
+          _transcript = existingTranscript;
+        });
+        _showTranscriptBottomSheet(_transcript!);
+        return;
+      }
 
-      // Close game and show transcript
-      Navigator.of(context).pop();
-      _showTranscriptBottomSheet(_transcript!);
+      // Check cache next
+      final cachedTranscript = _getCachedTranscript();
+      if (cachedTranscript != null) {
+        setState(() {
+          _transcript = cachedTranscript;
+        });
+        _showTranscriptBottomSheet(_transcript!);
+        return;
+      }
+
+      // If no transcript found
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No transcript available for this video'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error generating transcript: $e'),
+          content: Text('Error fetching transcript: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -532,72 +469,6 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
       setState(() {
         _isGeneratingTranscript = false;
       });
-    }
-  }
-
-  // Modify the regenerate transcript functionality to clear cache
-  Future<void> _regenerateTranscript() async {
-    try {
-      final transcriptionService = TranscriptionService();
-      final videoId = widget.videoUrl.split('/').last.split('?').first;
-
-      // Clear the cache
-      _clearTranscriptCache();
-
-      // Show loading indicator
-      setState(() {
-        _isGeneratingTranscript = true;
-        _transcript = null;
-      });
-
-      // Generate new transcript
-      final video = VideoModel(
-        id: videoId,
-        userId: '',
-        username: '',
-        videoUrl: widget.videoUrl,
-        thumbnailUrl: widget.thumbnailUrl,
-        title: '',
-        description: '',
-        category: 'general',
-        topics: [],
-        skills: [],
-        difficultyLevel: 'beginner',
-        duration: 0,
-        likes: 0,
-        comments: 0,
-        shares: 0,
-      );
-
-      final newTranscript =
-          await transcriptionService.generateTranscript(video);
-
-      // Cache the new transcript
-      _cacheTranscript(newTranscript);
-
-      if (!mounted) return;
-      setState(() {
-        _transcript = newTranscript;
-        _isGeneratingTranscript = false;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Transcript regenerated successfully'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      setState(() {
-        _isGeneratingTranscript = false;
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error regenerating transcript: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
   }
 
@@ -768,7 +639,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                               child: GestureDetector(
                                 onTap: _isGeneratingTranscript
                                     ? null
-                                    : () => _generateTranscript(),
+                                    : () => _fetchTranscript(),
                                 child: _isGeneratingTranscript
                                     ? const SizedBox(
                                         width: 20,
@@ -863,7 +734,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                               child: GestureDetector(
                                 onTap: _isGeneratingTranscript
                                     ? null
-                                    : () => _generateTranscript(),
+                                    : () => _fetchTranscript(),
                                 child: _isGeneratingTranscript
                                     ? const SizedBox(
                                         width: 20,

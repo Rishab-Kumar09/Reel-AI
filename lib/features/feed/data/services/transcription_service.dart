@@ -176,7 +176,7 @@ class TranscriptionService {
           'Content-Type': 'application/json',
         },
         body: json.encode({
-          'model': 'gpt-4o',
+          'model': 'gpt-4-turbo-preview',
           'messages': [
             {'role': 'system', 'content': systemPrompt},
             {
