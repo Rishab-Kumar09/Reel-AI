@@ -18,9 +18,20 @@ class TranscriptionService {
       25 * 1024 * 1024; // 25MB chunks for parallel processing
 
   TranscriptionService() {
-    _openAIKey = dotenv.env['OPENAI_API_KEY'] ?? '';
-    if (_openAIKey.isEmpty) {
-      throw Exception('OpenAI API key not found in .env file');
+    try {
+      // Load environment file if not already loaded
+      if (dotenv.env.isEmpty) {
+        dotenv.load(fileName: ".env");
+      }
+      _openAIKey = dotenv.env['OPENAI_API_KEY'] ?? '';
+      if (_openAIKey.isEmpty) {
+        throw Exception('OpenAI API key not found in .env file');
+      }
+      print(
+          'TranscriptionService initialized successfully with API key length: ${_openAIKey.length}');
+    } catch (e) {
+      print('Error initializing TranscriptionService: $e');
+      rethrow;
     }
   }
 
@@ -52,33 +63,48 @@ class TranscriptionService {
 
   Future<String> generateTranscript(VideoModel video) async {
     try {
+      print('Starting transcript generation for video: ${video.id}');
+
       // Check if transcript already exists
       final existingTranscript = await getTranscript(video.id);
-      if (existingTranscript != null) return existingTranscript;
+      if (existingTranscript != null) {
+        print('Found existing transcript for video: ${video.id}');
+        return existingTranscript;
+      }
 
+      print('Downloading and processing video: ${video.videoUrl}');
       // 1. Download and process video in parallel chunks
       final videoChunks = await _downloadAndProcessVideo(video.videoUrl);
+      print('Video processed into ${videoChunks.length} chunks');
 
       // 2. Get transcripts for all chunks in parallel
+      print('Starting transcription of chunks');
       final transcriptFutures =
           videoChunks.map((chunk) => _getWhisperTranscript(chunk));
       final transcripts = await Future.wait(transcriptFutures);
+      print('All chunks transcribed successfully');
 
       // 3. Combine transcripts
       final combinedTranscript = transcripts.join(' ');
+      print('Combined transcript length: ${combinedTranscript.length}');
 
-      // 4. Format with GPT based on category (using a more efficient prompt)
+      // 4. Format with GPT based on category
+      print('Formatting transcript with GPT');
       final formattedContent = await _formatWithGPT(
         combinedTranscript,
         video.category,
       );
+      print('Transcript formatted successfully');
 
       // 5. Save to both Firestore and local cache
+      print('Saving transcript to storage');
       await _saveTranscript(video.id, formattedContent);
+      print('Transcript saved successfully');
 
       return formattedContent;
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error generating transcript: $e');
+      print('Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -127,6 +153,7 @@ class TranscriptionService {
 
   Future<String> _getWhisperTranscript(List<int> videoData) async {
     try {
+      print('Preparing Whisper API request');
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('https://api.openai.com/v1/audio/transcriptions'),
@@ -141,6 +168,7 @@ class TranscriptionService {
       request.fields['response_format'] = 'json';
       request.fields['temperature'] = '0.1';
 
+      print('Adding video data to request (${videoData.length} bytes)');
       request.files.add(
         http.MultipartFile.fromBytes(
           'file',
@@ -149,17 +177,23 @@ class TranscriptionService {
         ),
       );
 
+      print('Sending request to Whisper API');
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
 
+      print('Whisper API response status: ${response.statusCode}');
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return data['text'];
+        final text = data['text'] as String;
+        print('Successfully got transcript of length: ${text.length}');
+        return text;
       } else {
+        print('Whisper API error response: ${response.body}');
         throw 'Failed to get transcript: ${response.statusCode} - ${response.body}';
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('Error in Whisper API: $e');
+      print('Stack trace: $stackTrace');
       rethrow;
     }
   }
@@ -204,24 +238,40 @@ class TranscriptionService {
   }
 
   String _getOptimizedPrompt(String category) {
-    // Simplified and optimized prompts for each category
-    switch (category.toLowerCase()) {
-      case 'programming':
-      case 'tech':
-        return '''Format as: Summary, Prerequisites, Steps (with code), Key Points''';
-      case 'cooking':
-      case 'recipe':
-        return '''Format as: Overview, Ingredients, Steps, Tips''';
-      case 'education':
-      case 'history':
-      case 'science':
-        return '''Format as: Topic, Key Points, Detailed Breakdown''';
-      case 'fitness':
-      case 'workout':
-        return '''Format as: Type, Exercises, Safety Tips''';
-      default:
-        return '''Format as: Overview, Main Points, Details''';
-    }
+    // Base prompt that enforces using only video content
+    const basePrompt =
+        '''You are a video transcription assistant. Your task is to format the given transcript.
+IMPORTANT RULES:
+1. Only use information directly from the video transcript. DO NOT add any external information or general knowledge.
+2. If something is unclear or missing from the transcript, do not fill in gaps with assumed information.
+3. Use exact quotes from the video when possible.
+4. Keep the original meaning and content intact.
+5. Do not make assumptions or add explanations not mentioned in the video.
+
+Format the transcript using these sections:
+
+1. Summary
+- Brief overview of what was actually shown/demonstrated in the video
+- Keep it factual and based only on what was explicitly shown
+
+2. Tools/Ingredients (if not mentioned)
+- List only items/tools/ingredients specifically shown or mentioned in the video
+- If none were mentioned, skip this section
+
+3. Detailed Steps/Breakdown
+- Chronological breakdown of what happens in the video
+- Use timestamps if available
+- Include exact quotes when relevant
+- Focus on actions and demonstrations shown
+
+4. Additional Notes (if relevant)
+- Any specific tips, warnings, or important points explicitly mentioned
+- Any unique aspects of the demonstration that were highlighted
+- Skip this section if no additional points were made
+
+Remember: Only include information that was explicitly shown or stated in the video. Do not add external knowledge or assumptions.''';
+
+    return basePrompt;
   }
 
   Future<void> _saveTranscript(String videoId, String content) async {

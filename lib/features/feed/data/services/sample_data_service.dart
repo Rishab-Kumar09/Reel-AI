@@ -926,6 +926,22 @@ class SampleDataService {
         },
       );
       onProgress?.call(1.0);
+
+      // Get the video document ID from Firestore
+      final videoQuery = await _firestore
+          .collection('videos')
+          .where('videoUrl', isGreaterThanOrEqualTo: downloadUrl)
+          .where('videoUrl', isLessThanOrEqualTo: downloadUrl + '\uf8ff')
+          .get();
+
+      if (videoQuery.docs.isEmpty) {
+        throw 'Video document not found';
+      }
+
+      final videoId = videoQuery.docs.first.id;
+      print('Starting transcript generation for recorded video: $videoId');
+      await _generateTranscriptDuringUpload(videoId, downloadUrl);
+      print('Transcript generation completed for recorded video: $videoId');
     } catch (e) {
       print('Error uploading recorded video: $e');
       rethrow;
