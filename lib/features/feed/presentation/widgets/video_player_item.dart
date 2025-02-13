@@ -408,67 +408,257 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     if (_isGeneratingTranscript) return;
 
     try {
-      // Extract the video filename from the URL
-      final videoFileName = widget.videoUrl.split('/').last.split('?').first;
+      setState(() {
+        _isGeneratingTranscript = true;
+      });
 
-      // Get the video document from Firestore to get the actual document ID
-      final videoQuery = await FirebaseFirestore.instance
+      // First try to get cached transcript
+      final cachedTranscript = _getCachedTranscript();
+      if (cachedTranscript != null) {
+        setState(() {
+          _transcript = cachedTranscript;
+          _isGeneratingTranscript = false;
+        });
+        _showTranscriptBottomSheet(cachedTranscript);
+        return;
+      }
+
+      // Extract video ID from URL more reliably
+      final videoUrl = widget.videoUrl;
+      String? videoId;
+
+      // First try to get video by exact URL match
+      var videoQuery = await FirebaseFirestore.instance
           .collection('videos')
-          .where('videoUrl', isGreaterThanOrEqualTo: widget.videoUrl)
-          .where('videoUrl', isLessThanOrEqualTo: widget.videoUrl + '\uf8ff')
+          .where('videoUrl', isEqualTo: videoUrl)
+          .limit(1)
           .get();
+
+      // If not found, try matching without query parameters
+      if (videoQuery.docs.isEmpty) {
+        final baseUrl = videoUrl.split('?')[0];
+        videoQuery = await FirebaseFirestore.instance
+            .collection('videos')
+            .where('videoUrl', isGreaterThanOrEqualTo: baseUrl)
+            .where('videoUrl', isLessThan: baseUrl + 'z')
+            .limit(1)
+            .get();
+      }
 
       if (videoQuery.docs.isEmpty) {
         throw 'Video document not found';
       }
 
-      final videoId = videoQuery.docs.first.id;
+      videoId = videoQuery.docs.first.id;
       final transcriptionService = TranscriptionService();
 
-      setState(() {
-        _isGeneratingTranscript = true;
-      });
+      // Check transcript status first
+      final videoDoc = await FirebaseFirestore.instance
+          .collection('videos')
+          .doc(videoId)
+          .get();
 
-      // First check Firestore
+      final transcriptStatus = videoDoc.data()?['transcriptStatus'];
+
+      if (transcriptStatus == 'generating') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Transcript is being generated. Please try again in a moment.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
+      if (transcriptStatus == 'failed') {
+        // If transcript generation previously failed, try regenerating
+        await _regenerateTranscript(videoId, videoUrl);
+        return;
+      }
+
+      // Try to get existing transcript
       final existingTranscript =
           await transcriptionService.getTranscript(videoId);
       if (existingTranscript != null) {
         setState(() {
           _transcript = existingTranscript;
+          _isGeneratingTranscript = false;
         });
-        _showTranscriptBottomSheet(_transcript!);
+        _cacheTranscript(existingTranscript);
+        _showTranscriptBottomSheet(existingTranscript);
         return;
       }
 
-      // Check cache next
-      final cachedTranscript = _getCachedTranscript();
-      if (cachedTranscript != null) {
-        setState(() {
-          _transcript = cachedTranscript;
-        });
-        _showTranscriptBottomSheet(_transcript!);
-        return;
-      }
-
-      // If no transcript found
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No transcript available for this video'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      // If no transcript exists and not being generated, start generation
+      await _startTranscriptGeneration(videoId, videoUrl);
     } catch (e) {
+      print('Error fetching transcript: $e');
       if (!mounted) return;
+
+      String errorMessage = 'Error fetching transcript';
+      if (e.toString().contains('API key')) {
+        errorMessage =
+            'OpenAI API key is invalid or missing. Please check your configuration.';
+      } else if (e.toString().contains('Video document not found')) {
+        errorMessage =
+            'Could not find video information. Please try again later.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error fetching transcript: $e'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {
-      setState(() {
-        _isGeneratingTranscript = false;
+      if (mounted) {
+        setState(() {
+          _isGeneratingTranscript = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _regenerateTranscript(String videoId, String videoUrl) async {
+    try {
+      // Update status to generating
+      await FirebaseFirestore.instance
+          .collection('videos')
+          .doc(videoId)
+          .update({'transcriptStatus': 'generating'});
+
+      // Show status to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Starting transcript generation...'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // Start generation in background
+      await _startTranscriptGeneration(videoId, videoUrl);
+    } catch (e) {
+      print('Error regenerating transcript: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to start transcript generation'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _startTranscriptGeneration(
+      String videoId, String videoUrl) async {
+    try {
+      // Create video model for transcript generation
+      final videoModel = VideoModel(
+        id: videoId,
+        userId: '',
+        username: '',
+        videoUrl: videoUrl,
+        thumbnailUrl: '',
+        title: '',
+        description: '',
+        category: 'general',
+        topics: [],
+        skills: [],
+        difficultyLevel: 'beginner',
+        duration: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+      );
+
+      // Update status
+      await FirebaseFirestore.instance
+          .collection('videos')
+          .doc(videoId)
+          .update({
+        'transcriptStatus': 'generating',
+        'transcriptStartedAt': FieldValue.serverTimestamp(),
       });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Starting transcript generation. This may take a few minutes.'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // Start generation in background
+      final transcriptionService = TranscriptionService();
+      transcriptionService
+          .generateTranscript(videoModel)
+          .then((transcript) async {
+        // Update status on success
+        await FirebaseFirestore.instance
+            .collection('videos')
+            .doc(videoId)
+            .update({
+          'transcriptStatus': 'completed',
+          'transcriptUpdatedAt': FieldValue.serverTimestamp(),
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Transcript generated successfully! Click the transcript button to view.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }).catchError((error) async {
+        print('Error generating transcript: $error');
+        // Update status on failure
+        await FirebaseFirestore.instance
+            .collection('videos')
+            .doc(videoId)
+            .update({
+          'transcriptStatus': 'failed',
+          'transcriptError': error.toString(),
+          'transcriptUpdatedAt': FieldValue.serverTimestamp(),
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  'Failed to generate transcript. Please try again later.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      });
+    } catch (e) {
+      print('Error starting transcript generation: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to start transcript generation'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 

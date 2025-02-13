@@ -81,6 +81,9 @@ dependencies:
   flutter_dotenv: ^5.1.0
   pdf: ^3.11.2
 
+  # Audio/Video Processing
+  just_audio: ^0.9.36
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -9,22 +9,35 @@ import 'dart:io';
 import 'dart:async';
 import 'dart:isolate';
 import 'package:flutter/foundation.dart';
+import 'package:just_audio/just_audio.dart';
 
 class TranscriptionService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   late final String _openAIKey;
   static const int _maxAudioDuration = 60; // Maximum audio duration in seconds
-  static const int _chunkSize =
-      25 * 1024 * 1024; // 25MB chunks for parallel processing
+  static const int _chunkSize = 10 * 1024 * 1024; // 10MB chunks for Whisper API
+  static const int _maxRetries = 3;
+  static const Duration _retryDelay = Duration(seconds: 2);
 
   TranscriptionService() {
+    _initializeApiKey();
+  }
+
+  void _initializeApiKey() {
     _openAIKey = dotenv.env['OPENAI_API_KEY'] ?? '';
     if (_openAIKey.isEmpty) {
-      throw Exception('OpenAI API key not found in .env file');
+      print('Warning: OpenAI API key not found in .env file');
     }
   }
 
+  bool get isApiKeyValid => _openAIKey.isNotEmpty;
+
   Future<String?> getTranscript(String videoId) async {
+    if (!isApiKeyValid) {
+      throw Exception(
+          'OpenAI API key not found or invalid. Please check your configuration.');
+    }
+
     try {
       // Check cache first
       final cacheDir = await getTemporaryDirectory();
@@ -51,29 +64,26 @@ class TranscriptionService {
   }
 
   Future<String> generateTranscript(VideoModel video) async {
+    if (!isApiKeyValid) {
+      throw Exception(
+          'OpenAI API key not found or invalid. Please check your configuration.');
+    }
+
     try {
       // Check if transcript already exists
       final existingTranscript = await getTranscript(video.id);
       if (existingTranscript != null) return existingTranscript;
 
-      // 1. Download and process video in parallel chunks
-      final videoChunks = await _downloadAndProcessVideo(video.videoUrl);
+      // Download video and send directly to Whisper
+      final transcript = await _processVideoAndGetTranscript(video.videoUrl);
 
-      // 2. Get transcripts for all chunks in parallel
-      final transcriptFutures =
-          videoChunks.map((chunk) => _getWhisperTranscript(chunk));
-      final transcripts = await Future.wait(transcriptFutures);
-
-      // 3. Combine transcripts
-      final combinedTranscript = transcripts.join(' ');
-
-      // 4. Format with GPT based on category (using a more efficient prompt)
-      final formattedContent = await _formatWithGPT(
-        combinedTranscript,
+      // Format with GPT based on category
+      final formattedContent = await _formatWithGPTWithRetry(
+        transcript,
         video.category,
       );
 
-      // 5. Save to both Firestore and local cache
+      // Save to both Firestore and local cache
       await _saveTranscript(video.id, formattedContent);
 
       return formattedContent;
@@ -83,25 +93,87 @@ class TranscriptionService {
     }
   }
 
-  Future<List<List<int>>> _downloadAndProcessVideo(String videoUrl) async {
+  Future<String> _processVideoAndGetTranscript(String videoUrl) async {
     try {
-      // Download video in chunks
+      // Create a temporary file for the video
+      final tempDir = await getTemporaryDirectory();
+      final videoFile = File('${tempDir.path}/temp_video.mp4');
+
+      // Download video
       final response = await http.get(Uri.parse(videoUrl));
       if (response.statusCode != 200) {
         throw 'Failed to download video from URL';
       }
 
-      final videoBytes = response.bodyBytes;
-      final chunks = <List<int>>[];
+      await videoFile.writeAsBytes(response.bodyBytes);
 
-      // Process in parallel using compute
-      final processedChunks = await compute(_processVideoChunks, {
-        'videoBytes': videoBytes,
-        'chunkSize': _chunkSize,
-        'maxDuration': _maxAudioDuration,
-      });
+      try {
+        // Compress video for Whisper
+        print('Compressing video for transcription...');
+        final MediaInfo? compressedVideo = await VideoCompress.compressVideo(
+          videoFile.path,
+          quality: VideoQuality
+              .LowQuality, // Use low quality since we only need audio
+          deleteOrigin: false,
+          includeAudio: true,
+          frameRate: 1, // Minimum frame rate since we only need audio
+        );
 
-      return processedChunks;
+        if (compressedVideo?.file == null) {
+          throw 'Failed to compress video';
+        }
+
+        final compressedFile = compressedVideo!.file!;
+        final compressedSize = await compressedFile.length();
+        print('Compressed video size: ${compressedSize / (1024 * 1024)}MB');
+
+        // Check compressed file size
+        if (compressedSize > 25 * 1024 * 1024) {
+          throw 'Video file is too large even after compression. Maximum size allowed is 25MB.';
+        }
+
+        // Send to Whisper API
+        var request = http.MultipartRequest(
+          'POST',
+          Uri.parse('https://api.openai.com/v1/audio/transcriptions'),
+        );
+
+        request.headers.addAll({
+          'Authorization': 'Bearer $_openAIKey',
+        });
+
+        request.fields['model'] = 'whisper-1';
+        request.fields['language'] = 'en';
+        request.fields['response_format'] = 'json';
+        request.fields['temperature'] = '0.1';
+
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'file',
+            compressedFile.path,
+            filename: 'video.mp4',
+          ),
+        );
+
+        final streamedResponse = await request.send();
+        final apiResponse = await http.Response.fromStream(streamedResponse);
+
+        if (apiResponse.statusCode == 200) {
+          final data = json.decode(apiResponse.body);
+          return data['text'];
+        } else {
+          print('Whisper API error response: ${apiResponse.body}');
+          throw 'Failed to get transcript: ${apiResponse.statusCode} - ${apiResponse.body}';
+        }
+      } finally {
+        // Clean up temp files
+        try {
+          await videoFile.delete();
+          await VideoCompress.deleteAllCache();
+        } catch (e) {
+          print('Warning: Failed to delete temporary files: $e');
+        }
+      }
     } catch (e) {
       print('Error processing video: $e');
       await VideoCompress.deleteAllCache();
@@ -109,64 +181,41 @@ class TranscriptionService {
     }
   }
 
-  static Future<List<List<int>>> _processVideoChunks(
-      Map<String, dynamic> params) async {
-    final videoBytes = params['videoBytes'] as List<int>;
-    final chunkSize = params['chunkSize'] as int;
-    final chunks = <List<int>>[];
-
-    for (var i = 0; i < videoBytes.length; i += chunkSize) {
-      final end = (i + chunkSize < videoBytes.length)
-          ? i + chunkSize
-          : videoBytes.length;
-      chunks.add(videoBytes.sublist(i, end));
+  Future<String> _formatWithGPTWithRetry(
+      String transcript, String category) async {
+    int retryCount = 0;
+    while (retryCount < _maxRetries) {
+      try {
+        return await _formatWithGPT(transcript, category);
+      } catch (e) {
+        retryCount++;
+        if (retryCount == _maxRetries) {
+          rethrow;
+        }
+        print('Retrying GPT API call (${retryCount}/${_maxRetries})');
+        await Future.delayed(_retryDelay * retryCount);
+      }
     }
-
-    return chunks;
+    throw Exception('Failed to format transcript after $_maxRetries retries');
   }
 
-  Future<String> _getWhisperTranscript(List<int> videoData) async {
-    try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('https://api.openai.com/v1/audio/transcriptions'),
-      );
+  String _getOptimizedPrompt(String category) {
+    return '''You are a transcript formatter. Your task is to format the given video transcript into a clear, readable structure.
+IMPORTANT: Only use information that is explicitly mentioned in the transcript. DO NOT add any external knowledge or assumptions.
+If something is unclear or ambiguous in the transcript, preserve that ambiguity rather than making assumptions.
 
-      request.headers.addAll({
-        'Authorization': 'Bearer $_openAIKey',
-      });
+Format the transcript maintaining these principles:
+1. Organize the content in a logical sequence as presented in the video
+2. Break into relevant sections based on topic changes in the video
+3. Use timestamps if they are available in the transcript
+4. Preserve exact quotes and technical terms as they appear in the video
+5. Do not add any explanations or context that wasn't explicitly stated in the video
 
-      request.fields['model'] = 'whisper-1';
-      request.fields['language'] = 'en';
-      request.fields['response_format'] = 'json';
-      request.fields['temperature'] = '0.1';
-
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          videoData,
-          filename: 'chunk.mp4',
-        ),
-      );
-
-      final streamedResponse = await request.send();
-      final response = await http.Response.fromStream(streamedResponse);
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return data['text'];
-      } else {
-        throw 'Failed to get transcript: ${response.statusCode} - ${response.body}';
-      }
-    } catch (e) {
-      print('Error in Whisper API: $e');
-      rethrow;
-    }
+Remember: Your role is purely organizational - do not enhance, explain, or add to the video's content.''';
   }
 
   Future<String> _formatWithGPT(String transcript, String category) async {
     try {
-      // Use a more efficient system prompt based on category
       final systemPrompt = _getOptimizedPrompt(category);
 
       final response = await http.post(
@@ -181,10 +230,15 @@ class TranscriptionService {
             {'role': 'system', 'content': systemPrompt},
             {
               'role': 'user',
-              'content': transcript,
+              'content': '''Here is the raw transcript to format:
+
+$transcript
+
+Remember: Only use information from this transcript. Do not add any external knowledge or explanations.'''
             },
           ],
-          'temperature': 0.2,
+          'temperature':
+              0.1, // Lower temperature for more consistent, literal output
           'max_tokens': 4000,
           'frequency_penalty': 0.0,
           'presence_penalty': 0.0,
@@ -200,27 +254,6 @@ class TranscriptionService {
     } catch (e) {
       print('Error in GPT API: $e');
       rethrow;
-    }
-  }
-
-  String _getOptimizedPrompt(String category) {
-    // Simplified and optimized prompts for each category
-    switch (category.toLowerCase()) {
-      case 'programming':
-      case 'tech':
-        return '''Format as: Summary, Prerequisites, Steps (with code), Key Points''';
-      case 'cooking':
-      case 'recipe':
-        return '''Format as: Overview, Ingredients, Steps, Tips''';
-      case 'education':
-      case 'history':
-      case 'science':
-        return '''Format as: Topic, Key Points, Detailed Breakdown''';
-      case 'fitness':
-      case 'workout':
-        return '''Format as: Type, Exercises, Safety Tips''';
-      default:
-        return '''Format as: Overview, Main Points, Details''';
     }
   }
 

@@ -826,7 +826,7 @@ class SampleDataService {
   }
 
   Future<void> uploadRecordedVideo(
-    File videoFile, {
+    File inputVideoFile, {
     Map<String, dynamic>? metadata,
     Function(double)? onProgress,
   }) async {
@@ -838,12 +838,24 @@ class SampleDataService {
         throw 'No user logged in';
       }
 
+      // Verify the video file exists and is readable
+      if (!await inputVideoFile.exists()) {
+        throw 'Video file not found';
+      }
+
       // Check video duration and trim if necessary
-      String videoPath = videoFile.path;
+      String videoPath = inputVideoFile.path;
+      print('Getting media info for video at path: $videoPath');
       final MediaInfo? mediaInfo = await VideoCompress.getMediaInfo(videoPath);
-      if (mediaInfo?.duration != null && mediaInfo!.duration! > 90000) {
-        print(
-            'Video duration exceeds 90 seconds, trimming to first 90 seconds...');
+
+      if (mediaInfo == null) {
+        throw 'Failed to get video information';
+      }
+
+      print('Original video duration: ${mediaInfo.duration} ms');
+      if (mediaInfo.duration != null && mediaInfo.duration! > 90000) {
+        print('Video duration exceeds 90 seconds, trimming...');
+
         // Create a temporary file for the trimmed video
         final tempDir = await getTemporaryDirectory();
         final trimmedPath =
@@ -857,7 +869,7 @@ class SampleDataService {
             deleteOrigin: false,
             includeAudio: true,
             startTime: 0,
-            duration: 90, // 90 seconds
+            duration: 90,
           );
 
           if (trimmedInfo?.file == null) {
@@ -865,7 +877,7 @@ class SampleDataService {
           }
 
           videoPath = trimmedInfo!.file!.path;
-          print('Successfully trimmed video to 90 seconds');
+          print('Successfully trimmed video. New path: $videoPath');
         } catch (e) {
           print('Error trimming video: $e');
           throw 'Failed to process video: $e';
@@ -879,38 +891,56 @@ class SampleDataService {
       String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
       print('Uploading video to Firebase Storage: $fileName');
 
+      // Generate and upload thumbnail first
+      String thumbnailUrl;
+      try {
+        final generatedUrl =
+            await _generateAndUploadThumbnail(videoPath, fileName);
+        if (generatedUrl == null) {
+          throw 'Failed to generate thumbnail';
+        }
+        thumbnailUrl = generatedUrl;
+        print('Successfully generated and uploaded thumbnail: $thumbnailUrl');
+      } catch (e) {
+        print('Warning: Failed to generate thumbnail: $e');
+        thumbnailUrl =
+            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500';
+      }
+
+      // Upload video
       final storageRef = _storage.ref().child('videos/$fileName');
+      final File processedVideoFile = File(videoPath);
+
       final uploadTask = storageRef.putFile(
-        File(videoPath),
-        SettableMetadata(contentType: 'video/mp4'),
+        processedVideoFile,
+        SettableMetadata(
+          contentType: 'video/mp4',
+          customMetadata: {
+            'duration': '${mediaInfo.duration}',
+            'size': '${await processedVideoFile.length()}',
+          },
+        ),
       );
 
-      // Listen to upload progress
+      // Monitor upload progress
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
         final progress =
             0.1 + (snapshot.bytesTransferred / snapshot.totalBytes) * 0.8;
         onProgress?.call(progress);
+        print('Upload progress: ${(progress * 100).toStringAsFixed(2)}%');
       });
 
       // Wait for upload to complete
-      await uploadTask;
-      onProgress?.call(0.9);
-
-      // Get the download URL
-      final downloadUrl = await storageRef.getDownloadURL();
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
 
-      // After successful video upload, generate and upload thumbnail
-      final thumbnailUrl =
-          await _generateAndUploadThumbnail(videoPath, fileName);
-
-      // Add video metadata to Firestore with actual thumbnail if available
-      await _addVideo(
+      // Add video metadata to Firestore
+      final docRef = await _addVideo(
         userId: currentUser.id,
         username: currentUser.name ?? currentUser.email,
         videoUrl: downloadUrl,
-        thumbnailUrl: thumbnailUrl ??
-            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
+        thumbnailUrl: thumbnailUrl,
         title: metadata?['title'] ?? 'Recorded Video',
         description: metadata?['description'] ?? 'Recorded video',
         category: metadata?['category'] ?? 'general',
@@ -921,16 +951,37 @@ class SampleDataService {
         aiMetadata: {
           'content_tags': metadata?['tags'] ?? ['User Recording'],
           'key_moments': {
-            'full': [0, 100],
+            'full': [
+              0,
+              mediaInfo.duration != null
+                  ? (mediaInfo.duration! / 1000).round()
+                  : 90
+            ],
           },
         },
       );
+
+      // Start transcript generation
+      onProgress?.call(0.9);
+      print('Starting transcript generation...');
+      await _generateTranscriptDuringUpload(docRef.id, downloadUrl);
       onProgress?.call(1.0);
+
+      // Clean up
+      try {
+        await VideoCompress.deleteAllCache();
+        if (videoPath != inputVideoFile.path) {
+          await File(videoPath).delete();
+        }
+      } catch (e) {
+        print('Warning: Error cleaning up temporary files: $e');
+      }
     } catch (e) {
       print('Error uploading recorded video: $e');
+      await VideoCompress.deleteAllCache();
+      dispose();
       rethrow;
     } finally {
-      await VideoCompress.deleteAllCache();
       dispose();
     }
   }
