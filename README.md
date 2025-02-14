@@ -1,4 +1,4 @@
-# Reel AI - Flutter Video Learning App
+# Reel AI - A Short format Video Learning App
 
 A modern short video platform built with Flutter and Firebase, featuring AI-powered video transcription.
 
