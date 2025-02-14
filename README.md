@@ -1,8 +1,5 @@
-<<<<<<< HEAD
+
 # AI-Powered Video Learning Platform
-=======
-# Reel AI - A Short format Video Learning App
->>>>>>> 02b040b645374c3f47dcc7dabaae63ab352a25e6
 
 A Flutter application that transforms video content into interactive learning experiences using AI. The app leverages OpenAI's GPT-4 and Whisper models to provide transcriptions, quizzes, and social sharing capabilities.
 
@@ -138,17 +135,6 @@ lib/
 - Efficient memory management
 - Background processing for heavy tasks
 
-## Future Enhancements
-
-- [ ] GPT-4 Vision integration for visual content analysis
-- [ ] Enhanced quiz types (fill-in-blanks, matching)
-- [ ] Learning path recommendations
-- [ ] Progress tracking and analytics
-- [ ] Collaborative learning features
-- [ ] Custom video thumbnails
-- [ ] Offline video download
-- [ ] Multi-language support
-
 ## Contributing
 
 1. Fork the repository
@@ -156,15 +142,5 @@ lib/
 3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- OpenAI for GPT-4 and Whisper APIs
-- Flutter team for the amazing framework
-- Firebase for backend services
 
 
