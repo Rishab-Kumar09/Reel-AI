@@ -111,14 +111,20 @@ class TranscriptionService {
 
   Future<List<List<int>>> _downloadAndProcessVideo(String videoUrl) async {
     try {
-      // Download video in chunks
-      final response = await http.get(Uri.parse(videoUrl));
-      if (response.statusCode != 200) {
-        throw 'Failed to download video from URL';
-      }
+      List<int> videoBytes;
 
-      final videoBytes = response.bodyBytes;
-      final chunks = <List<int>>[];
+      // Check if the URL is a local file path
+      if (videoUrl.startsWith('file://') || videoUrl.startsWith('/')) {
+        final file = File(videoUrl.replaceFirst('file://', ''));
+        videoBytes = await file.readAsBytes();
+      } else {
+        // Download video from remote URL
+        final response = await http.get(Uri.parse(videoUrl));
+        if (response.statusCode != 200) {
+          throw 'Failed to download video from URL';
+        }
+        videoBytes = response.bodyBytes;
+      }
 
       // Process in parallel using compute
       final processedChunks = await compute(_processVideoChunks, {
@@ -269,7 +275,7 @@ Format the transcript using these sections:
 - Any unique aspects of the demonstration that were highlighted
 - Skip this section if no additional points were made
 
-Remember: Only include information that was explicitly shown or stated in the video. Do not add external knowledge or assumptions.''';
+Remember: Only include information that was explicitly shown or stated in the video. Do not add external knowledge or assumptions.DO NOT ADD ANY AI-GENERATED CONTENT OR SUGGESTIONS.''';
 
     return basePrompt;
   }

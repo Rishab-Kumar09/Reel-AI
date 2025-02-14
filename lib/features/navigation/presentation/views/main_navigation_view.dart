@@ -17,6 +17,7 @@ class MainNavigationView extends StatefulWidget {
 
 class _MainNavigationViewState extends State<MainNavigationView> {
   int _currentIndex = 0;
+  final SampleDataService _sampleDataService = SampleDataService();
 
   final List<Widget> _screens = [
     const FeedView(),
@@ -24,6 +25,12 @@ class _MainNavigationViewState extends State<MainNavigationView> {
     const CreateView(),
     const ProfileView(),
   ];
+
+  @override
+  void dispose() {
+    _sampleDataService.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,29 +105,6 @@ class _MainNavigationViewState extends State<MainNavigationView> {
                 _showVideoMetadataForm(isUpload: true);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: Text(
-                'Record Video',
-                style: AppTheme.bodyLarge,
-              ),
-              onTap: () async {
-                Get.back();
-                try {
-                  // Navigate to camera screen
-                  Get.toNamed('/camera');
-                } catch (e) {
-                  print('Error launching camera: $e');
-                  Get.snackbar(
-                    'Error',
-                    'Failed to launch camera: $e',
-                    snackPosition: SnackPosition.BOTTOM,
-                    backgroundColor: Colors.red.withOpacity(0.1),
-                    colorText: Colors.red,
-                  );
-                }
-              },
-            ),
           ],
         ),
       ),
@@ -146,9 +130,8 @@ class _MainNavigationViewState extends State<MainNavigationView> {
                     });
 
                     try {
-                      final sampleDataService = SampleDataService();
                       if (isUpload) {
-                        await sampleDataService.uploadVideoFromDevice(
+                        await _sampleDataService.uploadVideoFromDevice(
                           metadata: metadata,
                           onProgress: (progress) {
                             setState(() {

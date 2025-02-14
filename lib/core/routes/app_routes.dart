@@ -16,5 +16,4 @@ abstract class Routes {
   static const settings = '/settings';
   static const categories = '/categories';
   static const search = '/search';
-  static const camera = '/camera';
 }

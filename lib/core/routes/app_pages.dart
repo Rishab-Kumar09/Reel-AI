@@ -4,7 +4,6 @@ import 'package:flutter_firebase_app_new/features/auth/presentation/views/signup
 import 'package:flutter_firebase_app_new/features/feed/presentation/views/feed_view.dart';
 import 'package:flutter_firebase_app_new/features/profile/presentation/views/profile_view.dart';
 import 'package:flutter_firebase_app_new/features/navigation/presentation/views/main_navigation_view.dart';
-import 'package:flutter_firebase_app_new/features/create/presentation/views/camera_view.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/views/video_player_view.dart';
 import 'package:flutter_firebase_app_new/core/routes/app_routes.dart';
 import 'package:flutter_firebase_app_new/features/auth/presentation/controllers/auth_controller.dart';
@@ -39,11 +38,6 @@ class AppPages {
     GetPage(
       name: Routes.profile,
       page: () => const ProfileView(),
-      transition: Transition.fadeIn,
-    ),
-    GetPage(
-      name: Routes.camera,
-      page: () => const CameraView(),
       transition: Transition.fadeIn,
     ),
     GetPage(

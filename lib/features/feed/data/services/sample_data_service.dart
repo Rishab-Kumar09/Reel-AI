@@ -22,10 +22,14 @@ class SampleDataService {
 
   // Add subscription variable
   Subscription? _compressSubscription;
+  StreamSubscription? _uploadProgressSubscription;
 
   // Initialize compression subscription
   void _initCompressSubscription() {
     _compressSubscription?.unsubscribe();
+    _uploadProgressSubscription?.cancel();
+    _uploadProgressSubscription = null;
+
     _compressSubscription =
         VideoCompress.compressProgress$.subscribe((progress) {
       print('Compression progress: $progress%');
@@ -36,6 +40,8 @@ class SampleDataService {
   void dispose() {
     _compressSubscription?.unsubscribe();
     _compressSubscription = null;
+    _uploadProgressSubscription?.cancel();
+    _uploadProgressSubscription = null;
   }
 
   Future<String> _uploadVideoToStorage(String videoUrl, String fileName) async {
@@ -753,15 +759,29 @@ class SampleDataService {
         ),
       );
 
+      // Cancel any existing upload progress subscription
+      await _uploadProgressSubscription?.cancel();
+      _uploadProgressSubscription = null;
+
       // Monitor upload progress
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
-        onProgress?.call(progress);
-        print('Upload progress: ${(progress * 100).toStringAsFixed(2)}%');
-      });
+      _uploadProgressSubscription = uploadTask.snapshotEvents.listen(
+        (TaskSnapshot snapshot) {
+          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          onProgress?.call(progress);
+          print('Upload progress: ${(progress * 100).toStringAsFixed(2)}%');
+        },
+        onError: (error) {
+          print('Error in upload progress stream: $error');
+        },
+        cancelOnError: true,
+      );
 
       // Wait for upload to complete
       final snapshot = await uploadTask;
+      // Cancel the progress subscription
+      await _uploadProgressSubscription?.cancel();
+      _uploadProgressSubscription = null;
+
       final downloadUrl = await snapshot.ref.getDownloadURL();
       print('Video uploaded successfully. Download URL: $downloadUrl');
 
@@ -822,132 +842,6 @@ class SampleDataService {
       await VideoCompress.deleteAllCache();
       dispose();
       rethrow;
-    }
-  }
-
-  Future<void> uploadRecordedVideo(
-    File videoFile, {
-    Map<String, dynamic>? metadata,
-    Function(double)? onProgress,
-  }) async {
-    try {
-      _initCompressSubscription();
-      // Get current user
-      final currentUser = _authController.user.value;
-      if (currentUser == null) {
-        throw 'No user logged in';
-      }
-
-      // Check video duration and trim if necessary
-      String videoPath = videoFile.path;
-      final MediaInfo? mediaInfo = await VideoCompress.getMediaInfo(videoPath);
-      if (mediaInfo?.duration != null && mediaInfo!.duration! > 90000) {
-        print(
-            'Video duration exceeds 90 seconds, trimming to first 90 seconds...');
-        // Create a temporary file for the trimmed video
-        final tempDir = await getTemporaryDirectory();
-        final trimmedPath =
-            '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4';
-
-        try {
-          // Compress and trim the video
-          final MediaInfo? trimmedInfo = await VideoCompress.compressVideo(
-            videoPath,
-            quality: VideoQuality.MediumQuality,
-            deleteOrigin: false,
-            includeAudio: true,
-            startTime: 0,
-            duration: 90, // 90 seconds
-          );
-
-          if (trimmedInfo?.file == null) {
-            throw 'Failed to trim video';
-          }
-
-          videoPath = trimmedInfo!.file!.path;
-          print('Successfully trimmed video to 90 seconds');
-        } catch (e) {
-          print('Error trimming video: $e');
-          throw 'Failed to process video: $e';
-        }
-      }
-
-      print('Processing video for upload...');
-      onProgress?.call(0.1);
-
-      // Generate a unique filename
-      String fileName = 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
-      print('Uploading video to Firebase Storage: $fileName');
-
-      final storageRef = _storage.ref().child('videos/$fileName');
-      final uploadTask = storageRef.putFile(
-        File(videoPath),
-        SettableMetadata(contentType: 'video/mp4'),
-      );
-
-      // Listen to upload progress
-      uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        final progress =
-            0.1 + (snapshot.bytesTransferred / snapshot.totalBytes) * 0.8;
-        onProgress?.call(progress);
-      });
-
-      // Wait for upload to complete
-      await uploadTask;
-      onProgress?.call(0.9);
-
-      // Get the download URL
-      final downloadUrl = await storageRef.getDownloadURL();
-      print('Video uploaded successfully. Download URL: $downloadUrl');
-
-      // After successful video upload, generate and upload thumbnail
-      final thumbnailUrl =
-          await _generateAndUploadThumbnail(videoPath, fileName);
-
-      // Add video metadata to Firestore with actual thumbnail if available
-      await _addVideo(
-        userId: currentUser.id,
-        username: currentUser.name ?? currentUser.email,
-        videoUrl: downloadUrl,
-        thumbnailUrl: thumbnailUrl ??
-            'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/300/500',
-        title: metadata?['title'] ?? 'Recorded Video',
-        description: metadata?['description'] ?? 'Recorded video',
-        category: metadata?['category'] ?? 'general',
-        isVertical: true,
-        topics: metadata?['tags']?.cast<String>() ?? ['General'],
-        skills: ['Content Creation'],
-        difficultyLevel: metadata?['difficultyLevel'] ?? 'beginner',
-        aiMetadata: {
-          'content_tags': metadata?['tags'] ?? ['User Recording'],
-          'key_moments': {
-            'full': [0, 100],
-          },
-        },
-      );
-      onProgress?.call(1.0);
-
-      // Get the video document ID from Firestore
-      final videoQuery = await _firestore
-          .collection('videos')
-          .where('videoUrl', isGreaterThanOrEqualTo: downloadUrl)
-          .where('videoUrl', isLessThanOrEqualTo: downloadUrl + '\uf8ff')
-          .get();
-
-      if (videoQuery.docs.isEmpty) {
-        throw 'Video document not found';
-      }
-
-      final videoId = videoQuery.docs.first.id;
-      print('Starting transcript generation for recorded video: $videoId');
-      await _generateTranscriptDuringUpload(videoId, downloadUrl);
-      print('Transcript generation completed for recorded video: $videoId');
-    } catch (e) {
-      print('Error uploading recorded video: $e');
-      rethrow;
-    } finally {
-      await VideoCompress.deleteAllCache();
-      dispose();
     }
   }
 }
