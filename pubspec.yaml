@@ -81,6 +81,9 @@ dependencies:
   flutter_dotenv: ^5.1.0
   pdf: ^3.11.2
 
+  # Added from the code block
+  url_launcher: ^6.2.5
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -136,4 +136,9 @@ class VideoModel {
         difficultyLevel: json['difficultyLevel'] as String? ?? 'beginner',
         duration: json['duration'] as int? ?? 0,
       );
+
+  // Static helper method to extract video ID from URL
+  static String getVideoIdFromUrl(String url) {
+    return url.split('/').last.split('?').first;
+  }
 }

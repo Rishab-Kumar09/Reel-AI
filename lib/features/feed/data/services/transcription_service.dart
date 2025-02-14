@@ -112,18 +112,51 @@ class TranscriptionService {
   Future<List<List<int>>> _downloadAndProcessVideo(String videoUrl) async {
     try {
       List<int> videoBytes;
+      File? tempFile;
+      File? compressedFile;
 
       // Check if the URL is a local file path
       if (videoUrl.startsWith('file://') || videoUrl.startsWith('/')) {
         final file = File(videoUrl.replaceFirst('file://', ''));
-        videoBytes = await file.readAsBytes();
+        tempFile = file;
       } else {
         // Download video from remote URL
         final response = await http.get(Uri.parse(videoUrl));
         if (response.statusCode != 200) {
           throw 'Failed to download video from URL';
         }
-        videoBytes = response.bodyBytes;
+
+        // Save to temporary file
+        final tempDir = await getTemporaryDirectory();
+        tempFile = File(
+            '${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4');
+        await tempFile.writeAsBytes(response.bodyBytes);
+      }
+
+      print('Compressing video before transcription...');
+      try {
+        // Compress video with lower quality for transcription
+        final MediaInfo? mediaInfo = await VideoCompress.compressVideo(
+          tempFile.path,
+          quality: VideoQuality.LowQuality, // Use low quality for transcription
+          deleteOrigin: false,
+          includeAudio: true, // Keep audio as we need it for transcription
+        );
+
+        if (mediaInfo?.file == null) {
+          throw 'Video compression failed';
+        }
+
+        compressedFile = mediaInfo!.file!;
+        print(
+            'Video compressed successfully. Original size: ${tempFile.lengthSync()}, Compressed size: ${compressedFile.lengthSync()}');
+
+        // Read compressed video bytes
+        videoBytes = await compressedFile.readAsBytes();
+      } catch (e) {
+        print('Error compressing video: $e');
+        print('Falling back to original video');
+        videoBytes = await tempFile.readAsBytes();
       }
 
       // Process in parallel using compute
@@ -132,6 +165,18 @@ class TranscriptionService {
         'chunkSize': _chunkSize,
         'maxDuration': _maxAudioDuration,
       });
+
+      // Cleanup
+      if (compressedFile != null && await compressedFile.exists()) {
+        await compressedFile.delete();
+      }
+      if (tempFile != null &&
+          await tempFile.exists() &&
+          !videoUrl.startsWith('file://') &&
+          !videoUrl.startsWith('/')) {
+        await tempFile.delete();
+      }
+      await VideoCompress.deleteAllCache();
 
       return processedChunks;
     } catch (e) {
@@ -191,6 +236,9 @@ class TranscriptionService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final text = data['text'] as String;
+        if (text.trim().isEmpty) {
+          return "No clear speech detected in this segment. This may be a non-verbal video or contain only background sounds/music.";
+        }
         print('Successfully got transcript of length: ${text.length}');
         return text;
       } else {
@@ -244,9 +292,12 @@ class TranscriptionService {
   }
 
   String _getOptimizedPrompt(String category) {
-    // Base prompt that enforces using only video content
-    const basePrompt =
-        '''You are a video transcription assistant. Your task is to format the given transcript.
+    // Base prompt that adapts based on video category
+    if (category.toLowerCase().contains('education') ||
+        category.toLowerCase().contains('tutorial') ||
+        category.toLowerCase().contains('cooking') ||
+        category.toLowerCase().contains('tech')) {
+      return '''You are a video transcription assistant. Your task is to format the given transcript.
 IMPORTANT RULES:
 1. Only use information directly from the video transcript. DO NOT add any external information or general knowledge.
 2. If something is unclear or missing from the transcript, do not fill in gaps with assumed information.
@@ -275,9 +326,33 @@ Format the transcript using these sections:
 - Any unique aspects of the demonstration that were highlighted
 - Skip this section if no additional points were made
 
-Remember: Only include information that was explicitly shown or stated in the video. Do not add external knowledge or assumptions.DO NOT ADD ANY AI-GENERATED CONTENT OR SUGGESTIONS.''';
+Remember: Only include information that was explicitly shown or stated in the video. Do not add external knowledge or assumptions.''';
+    } else {
+      // For non-educational videos or videos with minimal speech
+      return '''You are a video content assistant. Your task is to describe the content from the given transcript.
+Even if there is minimal speech or unclear audio, try to format what you can understand.
 
-    return basePrompt;
+Format the content using these sections:
+
+1. Content Overview
+- Brief description of what the video appears to be about
+- If there's minimal speech, focus on any clear sounds, music, or ambient audio
+- If the transcript is unclear or minimal, state that explicitly
+
+2. Key Moments/Detailed steps
+- Note any clear speech or significant sounds
+- Include any understandable quotes or audio elements
+- if any steps or points are mentioned in the video, include them in this section
+- If minimal speech, just mention that and skip to next section
+
+3. General Notes
+- Any other relevant observations from the audio
+- Mention if the audio is unclear, minimal, or missing in parts
+- Note if this appears to be a non-verbal or music-focused video
+
+Remember: Be honest about unclear or minimal audio. Don't make assumptions about content you can't clearly hear.
+If the transcript is very minimal, it's okay to have a brief response focusing on what IS clear.''';
+    }
   }
 
   Future<void> _saveTranscript(String videoId, String content) async {
@@ -353,5 +428,160 @@ Remember: Only include information that was explicitly shown or stated in the vi
       print('Error deleting transcript: $e');
       rethrow;
     }
+  }
+
+  Future<Map<String, String>> generateSocialPosts(String videoId,
+      {String? existingTranscript}) async {
+    try {
+      // First check if posts already exist in Firestore
+      final doc =
+          await _firestore.collection('social_posts').doc(videoId).get();
+      if (doc.exists) {
+        final posts = doc.data();
+        if (posts != null &&
+            posts['twitter'] != null &&
+            posts['linkedin'] != null &&
+            posts['facebook'] != null) {
+          return {
+            'twitter': posts['twitter'] as String,
+            'linkedin': posts['linkedin'] as String,
+            'facebook': posts['facebook'] as String,
+          };
+        }
+      }
+
+      final transcript = existingTranscript ?? await getTranscript(videoId);
+      if (transcript == null) {
+        throw 'Transcript not found';
+      }
+
+      final response = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $_openAIKey',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'model': 'gpt-3.5-turbo',
+          'messages': [
+            {
+              'role': 'system',
+              'content':
+                  '''You are a social media expert who creates engaging posts.
+Your task is to create three versions of a social media post from a video transcript.
+CRITICAL: DO NOT USE ANY EMOJIS OR SPECIAL CHARACTERS IN YOUR RESPONSE.
+
+Format your response EXACTLY as follows:
+
+Twitter Thread:
+Create a thread (max 3 tweets) that captures the key points.
+Each tweet should be on a new line, starting with a number and dash (1-, 2-, etc.).
+Keep each tweet concise and impactful.
+Use plain text only, no emojis or special characters.
+
+LinkedIn Post:
+Create a single professional yet engaging post.
+Focus on professional insights and value.
+Keep it under 200 words.
+Use plain text only, no emojis or special characters.
+
+Facebook Post:
+Create a friendly, conversational post.
+Keep it relatable and shareable.
+Keep it under 200 words.
+Use plain text only, no emojis or special characters.
+
+Rules:
+- ABSOLUTELY NO EMOJIS OR SPECIAL CHARACTERS
+- Use only plain text and standard punctuation
+- Use only information from the transcript
+- Make each post engaging and shareable
+- Include relevant hashtags (max 2 per post)
+- Keep the tone matching the platform:
+  * Twitter: Concise and impactful
+  * LinkedIn: Professional and insightful
+  * Facebook: Casual and conversational
+- IMPORTANT: Always maintain the exact format with "Twitter Thread:", "LinkedIn Post:", and "Facebook Post:" headers'''
+            },
+            {
+              'role': 'user',
+              'content': transcript,
+            },
+          ],
+          'temperature': 0.3,
+          'max_tokens': 500,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final content = data['choices'][0]['message']['content'];
+
+        // More robust parsing
+        String twitterThread = '';
+        String linkedInPost = '';
+        String facebookPost = '';
+
+        if (content.contains('Twitter Thread:') &&
+            content.contains('LinkedIn Post:') &&
+            content.contains('Facebook Post:')) {
+          final parts = content.split('\n\n');
+          for (int i = 0; i < parts.length; i++) {
+            if (parts[i].startsWith('Twitter Thread:')) {
+              twitterThread = _removeEmojis(
+                  parts[i].replaceFirst('Twitter Thread:', '').trim());
+            } else if (parts[i].startsWith('LinkedIn Post:')) {
+              linkedInPost = _removeEmojis(
+                  parts[i].replaceFirst('LinkedIn Post:', '').trim());
+            } else if (parts[i].startsWith('Facebook Post:')) {
+              facebookPost = _removeEmojis(
+                  parts[i].replaceFirst('Facebook Post:', '').trim());
+            }
+          }
+        } else {
+          // Fallback if format is not exact
+          final parts = content.split('\n\n');
+          twitterThread = _removeEmojis(parts[0]);
+          linkedInPost = parts.length > 1
+              ? _removeEmojis(parts[1])
+              : _removeEmojis(parts[0]);
+          facebookPost = parts.length > 2
+              ? _removeEmojis(parts[2])
+              : _removeEmojis(parts[0]);
+        }
+
+        // Store the generated posts in Firestore
+        await _firestore.collection('social_posts').doc(videoId).set({
+          'twitter': twitterThread,
+          'linkedin': linkedInPost,
+          'facebook': facebookPost,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        return {
+          'twitter': twitterThread,
+          'linkedin': linkedInPost,
+          'facebook': facebookPost,
+        };
+      } else {
+        throw 'Failed to generate social posts: ${response.statusCode}';
+      }
+    } catch (e) {
+      print('Error generating social posts: $e');
+      rethrow;
+    }
+  }
+
+  String _removeEmojis(String text) {
+    // Remove emojis and other special characters
+    return text
+        .replaceAll(
+            RegExp(
+                r'[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1FAFF}]|[\u{FE00}-\u{FE0F}]',
+                unicode: true),
+            '')
+        .replaceAll(RegExp(r'[^\x00-\x7F]+'), '') // Remove non-ASCII characters
+        .replaceAll(RegExp(r'\s+'), ' ') // Clean up extra whitespace
+        .trim();
   }
 }

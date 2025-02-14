@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_firebase_app_new/core/theme/app_theme.dart';
 import 'package:get/get.dart';
 import 'package:flutter_firebase_app_new/features/feed/data/services/chat_service.dart';
+import 'package:flutter_firebase_app_new/features/feed/data/services/transcription_service.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/social_share_sheet.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 class TranscriptChat extends StatefulWidget {
   final String transcript;
+  final String videoId;
 
   const TranscriptChat({
     Key? key,
     required this.transcript,
+    required this.videoId,
   }) : super(key: key);
 
   @override
@@ -122,6 +128,21 @@ class _TranscriptChatState extends State<TranscriptChat> {
             ),
           ),
 
+          // Share button
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: () => _showSocialShareSheet(context),
+                  color: AppTheme.primaryColor,
+                ),
+              ],
+            ),
+          ),
+
           // Chat messages
           Expanded(
             child: Obx(() => ListView.builder(
@@ -227,25 +248,132 @@ class _TranscriptChatState extends State<TranscriptChat> {
                 if (isTranscript)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
-                    child: Text(
-                      'Transcript',
-                      style: AppTheme.titleSmall.copyWith(
-                        color: AppTheme.textPrimaryColor,
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Transcript',
+                          style: AppTheme.titleSmall.copyWith(
+                            color: AppTheme.textPrimaryColor,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.copy, size: 20),
+                          onPressed: () =>
+                              _copyToClipboard(message.text, 'Transcript'),
+                          color: AppTheme.primaryColor,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Copy transcript',
+                        ),
+                      ],
                     ),
                   ),
-                Text(
-                  message.text,
-                  style: AppTheme.bodyMedium.copyWith(
-                    color: AppTheme.textPrimaryColor,
+                if (!isTranscript)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          message.text,
+                          style: AppTheme.bodyMedium.copyWith(
+                            color: AppTheme.textPrimaryColor,
+                          ),
+                        ),
+                      ),
+                      if (!message.isUser) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          icon: const Icon(Icons.copy, size: 20),
+                          onPressed: () =>
+                              _copyToClipboard(message.text, 'Answer'),
+                          color: AppTheme.primaryColor,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: 'Copy answer',
+                        ),
+                      ],
+                    ],
+                  )
+                else
+                  Text(
+                    message.text,
+                    style: AppTheme.bodyMedium.copyWith(
+                      color: AppTheme.textPrimaryColor,
+                    ),
                   ),
-                ),
               ],
             ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _copyToClipboard(String text, String type) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      Get.snackbar(
+        'Copied!',
+        '$type copied to clipboard',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppTheme.successColor.withOpacity(0.1),
+        colorText: AppTheme.successColor,
+        duration: const Duration(seconds: 2),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to copy $type',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
+        colorText: AppTheme.errorColor,
+      );
+    }
+  }
+
+  Future<void> _showSocialShareSheet(BuildContext context) async {
+    try {
+      Get.dialog(
+        const Center(
+          child: CircularProgressIndicator(),
+        ),
+        barrierDismissible: false,
+      );
+
+      final transcriptionService = TranscriptionService();
+      final posts = await transcriptionService.generateSocialPosts(
+        widget.videoId,
+        existingTranscript: widget.transcript,
+      );
+
+      Get.back(); // Close loading dialog
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) => SocialShareSheet(
+            twitterPost: posts['twitter']!,
+            linkedInPost: posts['linkedin']!,
+            facebookPost: posts['facebook']!,
+          ),
+        ),
+      );
+    } catch (e) {
+      Get.back(); // Close loading dialog
+      Get.snackbar(
+        'Error',
+        'Failed to generate social posts: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
+        colorText: AppTheme.errorColor,
+      );
+    }
   }
 }
 

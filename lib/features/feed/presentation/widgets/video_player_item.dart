@@ -484,6 +484,7 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
         maxChildSize: 0.9,
         builder: (context, scrollController) => TranscriptChat(
           transcript: transcript,
+          videoId: VideoModel.getVideoIdFromUrl(widget.videoUrl),
         ),
       ),
     );
