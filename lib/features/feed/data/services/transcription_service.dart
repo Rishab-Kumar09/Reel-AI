@@ -467,41 +467,43 @@ If the transcript is very minimal, it's okay to have a brief response focusing o
             {
               'role': 'system',
               'content':
-                  '''You are a social media expert who creates engaging posts.
+                  '''You are a social media expert who creates engaging, standalone posts.
 Your task is to create three versions of a social media post from a video transcript.
 CRITICAL: DO NOT USE ANY EMOJIS OR SPECIAL CHARACTERS IN YOUR RESPONSE.
 
 Format your response EXACTLY as follows:
 
 Twitter Thread:
-Create a thread (max 3 tweets) that captures the key points.
+Create a thread (max 3 tweets) that shares the complete knowledge/information.
 Each tweet should be on a new line, starting with a number and dash (1-, 2-, etc.).
-Keep each tweet concise and impactful.
+Make each tweet valuable on its own while connecting to tell the complete story.
+Focus on sharing the actual knowledge/tips/insights from the video.
 Use plain text only, no emojis or special characters.
 
 LinkedIn Post:
-Create a single professional yet engaging post.
-Focus on professional insights and value.
+Create a comprehensive, professional post that delivers the complete value.
+Structure the content to be easily scannable.
+Include the complete information without requiring external context.
 Keep it under 200 words.
 Use plain text only, no emojis or special characters.
 
 Facebook Post:
-Create a friendly, conversational post.
-Keep it relatable and shareable.
+Create a friendly, complete post that shares the full information.
+Make it conversational while delivering all key points.
+Structure for easy reading with short paragraphs.
 Keep it under 200 words.
 Use plain text only, no emojis or special characters.
 
 Rules:
-- ABSOLUTELY NO EMOJIS OR SPECIAL CHARACTERS
+- Make posts completely standalone - readers should get full value without needing the video
+- Focus on delivering the actual knowledge/information/tips from the content
+- Include specific examples and actionable points mentioned
 - Use only plain text and standard punctuation
-- Use only information from the transcript
-- Make each post engaging and shareable
 - Include relevant hashtags (max 2 per post)
 - Keep the tone matching the platform:
-  * Twitter: Concise and impactful
-  * LinkedIn: Professional and insightful
-  * Facebook: Casual and conversational
-- IMPORTANT: Always maintain the exact format with "Twitter Thread:", "LinkedIn Post:", and "Facebook Post:" headers'''
+  * Twitter: Concise but complete
+  * LinkedIn: Professional and detailed
+  * Facebook: Conversational but informative'''
             },
             {
               'role': 'user',
@@ -517,7 +519,6 @@ Rules:
         final data = json.decode(response.body);
         final content = data['choices'][0]['message']['content'];
 
-        // More robust parsing
         String twitterThread = '';
         String linkedInPost = '';
         String facebookPost = '';
@@ -583,5 +584,148 @@ Rules:
         .replaceAll(RegExp(r'[^\x00-\x7F]+'), '') // Remove non-ASCII characters
         .replaceAll(RegExp(r'\s+'), ' ') // Clean up extra whitespace
         .trim();
+  }
+
+  Future<Map<String, dynamic>?> generateQuiz(String videoId,
+      {String? existingTranscript}) async {
+    try {
+      // First check if quiz already exists in Firestore
+      final doc = await _firestore.collection('quizzes').doc(videoId).get();
+      if (doc.exists) {
+        return doc.data() as Map<String, dynamic>;
+      }
+
+      final transcript = existingTranscript ?? await getTranscript(videoId);
+      if (transcript == null) {
+        throw 'Transcript not found';
+      }
+
+      // First, analyze if content is suitable for a quiz
+      final analysisResponse = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $_openAIKey',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'model': 'gpt-3.5-turbo',
+          'messages': [
+            {
+              'role': 'system',
+              'content':
+                  '''Analyze if this transcript contains enough educational or informational content to create meaningful quiz questions.
+Return a JSON response in this format:
+{
+  "isQuizzable": boolean,
+  "reason": "Brief explanation of why this content is or isn't suitable for a quiz"
+}
+
+Consider content suitable for a quiz if it:
+1. Contains clear learning points or factual information
+2. Teaches specific concepts, methods, or skills
+3. Has enough depth to create at least 3 meaningful questions
+
+Consider content NOT suitable if it:
+1. Is purely entertainment
+2. Has minimal speech or information
+3. Is too short or lacks substantive content
+4. Is mostly ambient sounds or music'''
+            },
+            {
+              'role': 'user',
+              'content': transcript,
+            },
+          ],
+          'temperature': 0.3,
+          'max_tokens': 200,
+        }),
+      );
+
+      if (analysisResponse.statusCode != 200) {
+        throw 'Failed to analyze content for quiz suitability';
+      }
+
+      final analysisData = json.decode(analysisResponse.body);
+      final analysis =
+          json.decode(analysisData['choices'][0]['message']['content']);
+
+      // If content isn't suitable for a quiz, store this decision and return null
+      if (!analysis['isQuizzable']) {
+        await _firestore.collection('quizzes').doc(videoId).set({
+          'hasQuiz': false,
+          'reason': analysis['reason'],
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        return null;
+      }
+
+      // If content is suitable, generate the quiz
+      final quizResponse = await http.post(
+        Uri.parse('https://api.openai.com/v1/chat/completions'),
+        headers: {
+          'Authorization': 'Bearer $_openAIKey',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'model': 'gpt-3.5-turbo',
+          'messages': [
+            {
+              'role': 'system',
+              'content':
+                  '''You are an educational assessment expert. Create a short quiz based on the video transcript.
+Generate 3-5 multiple choice questions that test understanding of the key concepts from the video.
+
+Format your response as a JSON object with the following structure:
+{
+  "questions": [
+    {
+      "question": "The question text here",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": "The correct option here",
+      "explanation": "Brief explanation of why this is the correct answer"
+    }
+  ]
+}
+
+Rules:
+1. Questions should test understanding, not just recall
+2. All questions must be answerable from the transcript content
+3. Make options clear and distinct
+4. Include a brief explanation for each correct answer
+5. Ensure questions cover different aspects of the content
+6. Make questions progressively more challenging'''
+            },
+            {
+              'role': 'user',
+              'content': transcript,
+            },
+          ],
+          'temperature': 0.3,
+          'max_tokens': 1000,
+        }),
+      );
+
+      if (quizResponse.statusCode == 200) {
+        final data = json.decode(quizResponse.body);
+        final content = data['choices'][0]['message']['content'];
+
+        // Parse the JSON response
+        final quiz = json.decode(content);
+
+        // Store the generated quiz in Firestore
+        await _firestore.collection('quizzes').doc(videoId).set({
+          'hasQuiz': true,
+          ...quiz,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+
+        return quiz;
+      } else {
+        throw 'Failed to generate quiz: ${quizResponse.statusCode}';
+      }
+    } catch (e) {
+      print('Error generating quiz: $e');
+      rethrow;
+    }
   }
 }

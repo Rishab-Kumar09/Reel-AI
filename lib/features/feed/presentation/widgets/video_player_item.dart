@@ -17,6 +17,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/transcript_chat.dart';
+import 'package:flutter_firebase_app_new/features/feed/presentation/widgets/quiz_bottom_sheet.dart';
+import 'package:get/get.dart';
 
 class VideoPlayerItem extends StatefulWidget {
   final String videoUrl;
@@ -518,6 +520,76 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
     return file;
   }
 
+  // Add this method
+  void _showQuiz() async {
+    try {
+      final videoFileName = widget.videoUrl.split('/').last.split('?').first;
+      final videoQuery = await FirebaseFirestore.instance
+          .collection('videos')
+          .where('videoUrl', isGreaterThanOrEqualTo: widget.videoUrl)
+          .where('videoUrl', isLessThanOrEqualTo: widget.videoUrl + '\uf8ff')
+          .get();
+
+      if (videoQuery.docs.isEmpty) {
+        throw 'Video document not found';
+      }
+
+      final videoId = videoQuery.docs.first.id;
+      final transcriptionService = TranscriptionService();
+
+      // Show loading indicator
+      Get.dialog(
+        const Center(
+          child: CircularProgressIndicator(),
+        ),
+        barrierDismissible: false,
+      );
+
+      final quiz = await transcriptionService.generateQuiz(videoId);
+
+      // Close loading dialog
+      Get.back();
+
+      if (quiz == null) {
+        // No quiz available for this content
+        Get.snackbar(
+          'Quiz Not Available',
+          'This video doesn\'t have enough educational content for a quiz.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: AppTheme.primaryColor.withOpacity(0.1),
+          colorText: AppTheme.primaryColor,
+        );
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Show quiz bottom sheet
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          builder: (context, scrollController) => QuizBottomSheet(
+            quiz: quiz,
+          ),
+        ),
+      );
+    } catch (e) {
+      Get.back(); // Close loading dialog if error occurs
+      Get.snackbar(
+        'Error',
+        'Failed to load quiz: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: AppTheme.errorColor.withOpacity(0.1),
+        colorText: AppTheme.errorColor,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
@@ -631,31 +703,53 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                             left: 16,
                             top:
                                 80, // Changed from 16 to 80 to lower the position
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: GestureDetector(
-                                onTap: _isGeneratingTranscript
-                                    ? null
-                                    : () => _fetchTranscript(),
-                                child: _isGeneratingTranscript
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        Icons.description,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                              ),
+                            child: Row(
+                              children: [
+                                // Transcript button
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: _isGeneratingTranscript
+                                        ? null
+                                        : () => _fetchTranscript(),
+                                    child: _isGeneratingTranscript
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.description,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Quiz button
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: _showQuiz,
+                                    child: const Icon(
+                                      Icons.quiz,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -726,31 +820,53 @@ class VideoPlayerItemState extends State<VideoPlayerItem> {
                             left: 16,
                             top:
                                 80, // Changed from 16 to 80 to lower the position
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: GestureDetector(
-                                onTap: _isGeneratingTranscript
-                                    ? null
-                                    : () => _fetchTranscript(),
-                                child: _isGeneratingTranscript
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        Icons.description,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                              ),
+                            child: Row(
+                              children: [
+                                // Transcript button
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: _isGeneratingTranscript
+                                        ? null
+                                        : () => _fetchTranscript(),
+                                    child: _isGeneratingTranscript
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              color: Colors.white,
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.description,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // Quiz button
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: _showQuiz,
+                                    child: const Icon(
+                                      Icons.quiz,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
