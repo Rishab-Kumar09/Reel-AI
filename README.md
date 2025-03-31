@@ -1,5 +1,5 @@
 
-# AI-Powered Video Learning Platform
+# Reel AI - AI-Powered Video Learning Platform
 
 A Flutter application that transforms video content into interactive learning experiences using AI. The app leverages OpenAI's GPT-4 and Whisper models to provide transcriptions, quizzes, and social sharing capabilities.
 
